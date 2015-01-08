@@ -121,7 +121,7 @@ as context. The Dockerfile at the root of the repository is used as
 Dockerfile. This only works if the Github repository is a dedicated
 repository.
 
-    docker build github.com/scollier/Fedora-Dockerfiles/tree/master/apache
+    docker build https://raw.githubusercontent.com/fedora-cloud/Fedora-Dockerfiles/master/apache/Dockerfile
 
 Note: You can set an arbitrary Git repository via the `git://` schema.
 
