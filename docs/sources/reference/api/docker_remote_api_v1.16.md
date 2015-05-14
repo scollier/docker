@@ -36,7 +36,7 @@ List containers
         [
              {
                      "Id": "8dfafdbc3a40",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 1",
                      "Created": 1367854155,
                      "Status": "Exit 0",
@@ -46,7 +46,7 @@ List containers
              },
              {
                      "Id": "9cd87474be90",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 222222",
                      "Created": 1367854155,
                      "Status": "Exit 0",
@@ -56,7 +56,7 @@ List containers
              },
              {
                      "Id": "3176a2479c92",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 3333333333333333",
                      "Created": 1367854154,
                      "Status": "Exit 0",
@@ -66,7 +66,7 @@ List containers
              },
              {
                      "Id": "4cb07b47f9fb",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 444444444444444444444444444444444",
                      "Created": 1367854152,
                      "Status": "Exit 0",
@@ -128,7 +128,7 @@ Create a container
                      "date"
              ],
              "Entrypoint": "",
-             "Image": "base",
+             "Image": "ubuntu",
              "Volumes": {
                      "/tmp": {}
              },
@@ -148,6 +148,7 @@ Create a container
                "Privileged": false,
                "Dns": ["8.8.8.8"],
                "DnsSearch": [""],
+               "ExtraHosts": null,
                "VolumesFrom": ["parent", "other:ro"],
                "CapAdd": ["NET_ADMIN"],
                "CapDrop": ["MKNOD"],
@@ -173,12 +174,12 @@ Json Parameters:
       container.
 -   **Domainname** - A string value containing the desired domain name to use
       for the container.
--   **User** - A string value containg the user to use inside the container.
+-   **User** - A string value containing the user to use inside the container.
 -   **Memory** - Memory limit in bytes.
 -   **MemorySwap**- Total memory usage (memory + swap); set `-1` to disable swap.
 -   **CpuShares** - An integer value containing the CPU Shares for container
-      (ie. the relative weight vs othercontainers).
-    **CpuSet** - String value containg the cgroups Cpuset to use.
+      (ie. the relative weight vs other containers).
+    **CpuSet** - String value containing the cgroups Cpuset to use.
 -   **AttachStdin** - Boolean value, attaches to stdin.
 -   **AttachStdout** - Boolean value, attaches to stdout.
 -   **AttachStderr** - Boolean value, attaches to stderr.
@@ -194,7 +195,7 @@ Json Parameters:
         container to empty objects.
 -   **WorkingDir** - A string value containing the working dir for commands to
       run in.
--   **NetworkDisabled** - Boolean value, when true disables neworking for the
+-   **NetworkDisabled** - Boolean value, when true disables networking for the
       container
 -   **ExposedPorts** - An object mapping ports to an empty object in the form of:
       `"ExposedPorts": { "<port>/<tcp|udp>: {}" }`
@@ -206,8 +207,8 @@ Json Parameters:
           volume for the container), `host_path:container_path` (to bind-mount
           a host path into the container), or `host_path:container_path:ro`
           (to make the bind-mount read-only inside the container).
-  -   **Links** - A list of links for the container.  Each link entry should be of
-        of the form "container_name:alias".
+  -   **Links** - A list of links for the container.  Each link entry should be
+        in the form of "container_name:alias".
   -   **LxcConf** - LXC specific configurations.  These configurations will only
         work when using the `lxc` execution driver.
   -   **PortBindings** - A map of exposed container ports and the host port they
@@ -220,10 +221,12 @@ Json Parameters:
         a boolean value.
   -   **Dns** - A list of dns servers for the container to use.
   -   **DnsSearch** - A list of DNS search domains
+  -   **ExtraHosts** - A list of hostnames/IP mappings to be added to the
+      container's `/etc/hosts` file. Specified in the form `["hostname:IP"]`.
   -   **VolumesFrom** - A list of volumes to inherit from another container.
         Specified in the form `<container name>[:<ro|rw>]`
-  -   **CapAdd** - A list of kernel capabilties to add to the container.
-  -   **Capdrop** - A list of kernel capabilties to drop from the container.
+  -   **CapAdd** - A list of kernel capabilities to add to the container.
+  -   **Capdrop** - A list of kernel capabilities to drop from the container.
   -   **RestartPolicy** – The behavior to apply when the container exits.  The
           value is an object with a `Name` property of either `"always"` to
           always restart or `"on-failure"` to restart only when the container
@@ -288,7 +291,7 @@ Return low-level information on the container `id`
                                      "date"
                              ],
                              "Dns": null,
-                             "Image": "base",
+                             "Image": "ubuntu",
                              "Volumes": {},
                              "VolumesFrom": "",
                              "WorkingDir": ""
@@ -506,11 +509,65 @@ Start the container `id`
         POST /containers/(id)/start HTTP/1.1
         Content-Type: application/json
 
+        {
+             "Binds": ["/tmp:/tmp"],
+             "Links": ["redis3:redis"],
+             "LxcConf": {"lxc.utsname":"docker"},
+             "PortBindings": { "22/tcp": [{ "HostPort": "11022" }] },
+             "PublishAllPorts": false,
+             "Privileged": false,
+             "Dns": ["8.8.8.8"],
+             "DnsSearch": [""],
+             "VolumesFrom": ["parent", "other:ro"],
+             "CapAdd": ["NET_ADMIN"],
+             "CapDrop": ["MKNOD"],
+             "RestartPolicy": { "Name": "", "MaximumRetryCount": 0 },
+             "NetworkMode": "bridge",
+             "Devices": []
+        }
+
 **Example response**:
 
         HTTP/1.1 204 No Content
 
 Json Parameters:
+
+-   **Binds** – A list of volume bindings for this container.  Each volume
+        binding is a string of the form `container_path` (to create a new
+        volume for the container), `host_path:container_path` (to bind-mount
+        a host path into the container), or `host_path:container_path:ro`
+        (to make the bind-mount read-only inside the container).
+-   **Links** - A list of links for the container.  Each link entry should be of
+      of the form "container_name:alias".
+-   **LxcConf** - LXC specific configurations.  These configurations will only
+      work when using the `lxc` execution driver.
+-   **PortBindings** - A map of exposed container ports and the host port they
+      should map to. It should be specified in the form
+      `{ <port>/<protocol>: [{ "HostPort": "<port>" }] }`
+      Take note that `port` is specified as a string and not an integer value.
+-   **PublishAllPorts** - Allocates a random host port for all of a container's
+      exposed ports. Specified as a boolean value.
+-   **Privileged** - Gives the container full access to the host.  Specified as
+      a boolean value.
+-   **Dns** - A list of dns servers for the container to use.
+-   **DnsSearch** - A list of DNS search domains
+-   **VolumesFrom** - A list of volumes to inherit from another container.
+      Specified in the form `<container name>[:<ro|rw>]`
+-   **CapAdd** - A list of kernel capabilities to add to the container.
+-   **Capdrop** - A list of kernel capabilities to drop from the container.
+-   **RestartPolicy** – The behavior to apply when the container exits.  The
+        value is an object with a `Name` property of either `"always"` to
+        always restart or `"on-failure"` to restart only when the container
+        exit code is non-zero.  If `on-failure` is used, `MaximumRetryCount`
+        controls the number of times to retry before giving up.
+        The default is not to restart. (optional)
+        An ever increasing delay (double the previous delay, starting at 100mS)
+        is added before each restart to prevent flooding the server.
+-   **NetworkMode** - Sets the networking mode for the container. Supported
+      values are: `bridge`, `host`, and `container:<name|id>`
+-   **Devices** - A list of devices to add to the container specified in the
+      form
+      `{ "PathOnHost": "/dev/deviceName", "PathInContainer": "/dev/deviceName", "CgroupPermissions": "mrw"}`
 
 Status Codes:
 
@@ -709,9 +766,44 @@ Status Codes:
 
     1.  Read 8 bytes
     2.  chose stdout or stderr depending on the first byte
-    3.  Extract the frame size from the last 4 byets
+    3.  Extract the frame size from the last 4 bytes
     4.  Read the extracted size and output it on the correct output
     5.  Goto 1
+
+### Attach to a container (websocket)
+
+`GET /containers/(id)/attach/ws`
+
+Attach to the container `id` via websocket
+
+Implements websocket protocol handshake according to [RFC 6455](http://tools.ietf.org/html/rfc6455)
+
+**Example request**
+
+        GET /containers/e90e34656806/attach/ws?logs=0&stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1
+
+**Example response**
+
+        {{ STREAM }}
+
+Query Parameters:
+
+-   **logs** – 1/True/true or 0/False/false, return logs. Default false
+-   **stream** – 1/True/true or 0/False/false, return stream.
+        Default false
+-   **stdin** – 1/True/true or 0/False/false, if stream=true, attach
+        to stdin. Default false
+-   **stdout** – 1/True/true or 0/False/false, if logs=true, return
+        stdout log, if stream=true, attach to stdout. Default false
+-   **stderr** – 1/True/true or 0/False/false, if logs=true, return
+        stderr log, if stream=true, attach to stderr. Default false
+
+Status Codes:
+
+-   **200** – no error
+-   **400** – bad parameter
+-   **404** – no such container
+-   **500** – server error
 
 ### Wait a container
 
@@ -847,7 +939,7 @@ Create an image, either by pulling it from the registry or by importing it
 
 **Example request**:
 
-        POST /images/create?fromImage=base HTTP/1.1
+        POST /images/create?fromImage=ubuntu HTTP/1.1
 
 **Example response**:
 
@@ -891,7 +983,7 @@ Return low-level information on the image `name`
 
 **Example request**:
 
-        GET /images/base/json HTTP/1.1
+        GET /images/ubuntu/json HTTP/1.1
 
 **Example response**:
 
@@ -917,7 +1009,7 @@ Return low-level information on the image `name`
                              "Env": null,
                              "Cmd": ["/bin/bash"],
                              "Dns": null,
-                             "Image": "base",
+                             "Image": "ubuntu",
                              "Volumes": null,
                              "VolumesFrom": "",
                              "WorkingDir": ""
@@ -941,7 +1033,7 @@ Return the history of the image `name`
 
 **Example request**:
 
-        GET /images/base/history HTTP/1.1
+        GET /images/ubuntu/history HTTP/1.1
 
 **Example response**:
 
@@ -1160,6 +1252,7 @@ Query Parameters:
 
 -   **t** – repository name (and optionally a tag) to be applied to
         the resulting image in case of success
+-   **remote** – git or HTTP/HTTPS URI build source
 -   **q** – suppress verbose build output
 -   **nocache** – do not use the cache when building the image
 -   **pull** - attempt to pull the image even if an older image exists locally
@@ -1169,7 +1262,7 @@ Query Parameters:
     Request Headers:
 
 -   **Content-type** – should be set to `"application/tar"`.
--   **X-Registry-Config** – base64-encoded ConfigFile objec
+-   **X-Registry-Config** – base64-encoded ConfigFile object
 
 Status Codes:
 
@@ -1389,10 +1482,10 @@ and Docker images will report:
         HTTP/1.1 200 OK
         Content-Type: application/json
 
-        {"status": "create", "id": "dfdf82bd3881","from": "base:latest", "time":1374067924}
-        {"status": "start", "id": "dfdf82bd3881","from": "base:latest", "time":1374067924}
-        {"status": "stop", "id": "dfdf82bd3881","from": "base:latest", "time":1374067966}
-        {"status": "destroy", "id": "dfdf82bd3881","from": "base:latest", "time":1374067970}
+        {"status": "create", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067924}
+        {"status": "start", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067924}
+        {"status": "stop", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067966}
+        {"status": "destroy", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067970}
 
 Query Parameters:
 
@@ -1416,7 +1509,7 @@ Get a tarball containing all images and metadata for the repository specified
 by `name`.
 
 If `name` is a specific name and tag (e.g. ubuntu:latest), then only that image
-(and its parents) are returned. If `name` is an image ID, similarly only tha
+(and its parents) are returned. If `name` is an image ID, similarly only that
 image (and its parents) are returned, but with the exclusion of the
 'repositories' file in the tarball, as there were no image names referenced.
 

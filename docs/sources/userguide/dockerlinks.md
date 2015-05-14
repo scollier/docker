@@ -1,8 +1,8 @@
-page_title: Linking Containers Together
+page_title: Linking containers together
 page_description: Learn how to connect Docker containers together.
 page_keywords: Examples, Usage, user guide, links, linking, docker, documentation, examples, names, name, container naming, port, map, network port, network
 
-# Linking Containers Together
+# Linking containers together
 
 In [the Using Docker section](/userguide/usingdocker), you saw how you can
 connect to a service running inside a Docker container via a network
@@ -11,12 +11,12 @@ applications running inside Docker containers. In this section, we'll briefly re
 connecting via a network port and then we'll introduce you to another method of access:
 container linking.
 
-## Network port mapping refresher
+## Connect using network port mapping
 
 In [the Using Docker section](/userguide/usingdocker), you created a
 container that ran a Python Flask application:
 
-    $ sudo docker run -d -P training/webapp python app.py
+    $ docker run -d -P training/webapp python app.py
 
 > **Note:** 
 > Containers have an internal network and an IP address
@@ -25,19 +25,20 @@ container that ran a Python Flask application:
 > Docker can have a variety of network configurations. You can see more
 > information on Docker networking [here](/articles/networking/).
 
-When that container was created, the `-P` flag was used to automatically map any
-network ports inside it to a random high port from the range 49153
-to 65535 on our Docker host.  Next, when `docker ps` was run, you saw that
-port 5000 in the container was bound to port 49155 on the host.
+When that container was created, the `-P` flag was used to automatically map
+any network port inside it to a random high port within an *ephemeral port
+range* on your Docker host. Next, when `docker ps` was run, you saw that port
+5000 in the container was bound to port 49155 on the host.
 
-    $ sudo docker ps nostalgic_morse
+    $ docker ps nostalgic_morse
     CONTAINER ID  IMAGE                   COMMAND       CREATED        STATUS        PORTS                    NAMES
     bc533791f3f5  training/webapp:latest  python app.py 5 seconds ago  Up 2 seconds  0.0.0.0:49155->5000/tcp  nostalgic_morse
 
 You also saw how you can bind a container's ports to a specific port using
-the `-p` flag:
+the `-p` flag. Here port 80 of the host is mapped to port 5000 of the 
+container:
 
-    $ sudo docker run -d -p 5000:5000 training/webapp python app.py
+    $ docker run -d -p 80:5000 training/webapp python app.py
 
 And you saw why this isn't such a great idea because it constrains you to
 only one container on that specific port.
@@ -47,32 +48,32 @@ default the `-p` flag will bind the specified port to all interfaces on
 the host machine. But you can also specify a binding to a specific
 interface, for example only to the `localhost`.
 
-    $ sudo docker run -d -p 127.0.0.1:5000:5000 training/webapp python app.py
+    $ docker run -d -p 127.0.0.1:80:5000 training/webapp python app.py
 
-This would bind port 5000 inside the container to port 5000 on the
+This would bind port 5000 inside the container to port 80 on the
 `localhost` or `127.0.0.1` interface on the host machine.
 
 Or, to bind port 5000 of the container to a dynamic port but only on the
 `localhost`, you could use:
 
-    $ sudo docker run -d -p 127.0.0.1::5000 training/webapp python app.py
+    $ docker run -d -p 127.0.0.1::5000 training/webapp python app.py
 
 You can also bind UDP ports by adding a trailing `/udp`. For example:
 
-    $ sudo docker run -d -p 127.0.0.1:5000:5000/udp training/webapp python app.py
+    $ docker run -d -p 127.0.0.1:80:5000/udp training/webapp python app.py
 
 You also learned about the useful `docker port` shortcut which showed us the
 current port bindings. This is also useful for showing you specific port
 configurations. For example, if you've bound the container port to the
 `localhost` on the host machine, then the `docker port` output will reflect that.
 
-    $ sudo docker port nostalgic_morse 5000
+    $ docker port nostalgic_morse 5000
     127.0.0.1:49155
 
 > **Note:** 
 > The `-p` flag can be used multiple times to configure multiple ports.
 
-## Docker Container Linking
+## Connect with the linking system
 
 Network port mappings are not the only way Docker containers can connect
 to one another. Docker also has a linking system that allows you to link
@@ -81,7 +82,7 @@ When containers are linked, information about a source container can be sent to 
 recipient container. This allows the recipient to see selected data describing
 aspects of the source container.
 
-## Container naming
+### The importance of naming
 
 To establish links, Docker relies on the names of your containers.
 You've already seen that each container you create has an automatically
@@ -98,22 +99,22 @@ yourself. This naming provides two useful functions:
 
 You can name your container by using the `--name` flag, for example:
 
-    $ sudo docker run -d -P --name web training/webapp python app.py
+    $ docker run -d -P --name web training/webapp python app.py
 
 This launches a new container and uses the `--name` flag to
 name the container `web`. You can see the container's name using the
 `docker ps` command.
 
-    $ sudo docker ps -l
+    $ docker ps -l
     CONTAINER ID  IMAGE                  COMMAND        CREATED       STATUS       PORTS                    NAMES
     aed84ee21bde  training/webapp:latest python app.py  12 hours ago  Up 2 seconds 0.0.0.0:49154->5000/tcp  web
 
 You can also use `docker inspect` to return the container's name.
 
-    $ sudo docker inspect -f "{{ .Name }}" aed84ee21bde
+    $ docker inspect -f "{{ .Name }}" aed84ee21bde
     /web
 
-> **Note:** 
+> **Note:**
 > Container names have to be unique. That means you can only call
 > one container `web`. If you want to re-use a container name you must delete
 > the old container (with `docker rm`) before you can create a new
@@ -121,7 +122,7 @@ You can also use `docker inspect` to return the container's name.
 > flag with the `docker run` command. This will delete the container
 > immediately after it is stopped.
 
-## Container Linking
+## Communication across links
 
 Links allow containers to discover each other and securely transfer information about one
 container to another container. When you set up a link, you create a conduit between a
@@ -129,7 +130,7 @@ source container and a recipient container. The recipient can then access select
 about the source. To create a link, you use the `--link` flag. First, create a new
 container, this time one containing a database.
 
-    $ sudo docker run -d --name db training/postgres
+    $ docker run -d --name db training/postgres
 
 This creates a new container called `db` from the `training/postgres`
 image, which contains a PostgreSQL database.
@@ -137,23 +138,31 @@ image, which contains a PostgreSQL database.
 Now, you need to delete the `web` container you created previously so you can replace it
 with a linked one:
 
-    $ sudo docker rm -f web
+    $ docker rm -f web
 
 Now, create a new `web` container and link it with your `db` container.
 
-    $ sudo docker run -d -P --name web --link db:db training/webapp python app.py
+    $ docker run -d -P --name web --link db:db training/webapp python app.py
 
 This will link the new `web` container with the `db` container you created
 earlier. The `--link` flag takes the form:
 
-    --link name:alias
+    --link <name or id>:alias
 
 Where `name` is the name of the container we're linking to and `alias` is an
 alias for the link name. You'll see how that alias gets used shortly.
+The `--link` flag also takes the form:
+
+	--link <name or id>
+
+In which case the alias will match the name. You could have written the previous
+example as:
+
+    $ docker run -d -P --name web --link db training/webapp python app.py
 
 Next, inspect your linked containers with `docker inspect`:
 
-    $ sudo docker inspect -f "{{ .HostConfig.Links }}" web
+    $ docker inspect -f "{{ .HostConfig.Links }}" web
     [/db:/web/db]
 
 You can see that the `web` container is now linked to the `db` container
@@ -174,49 +183,72 @@ recipient container in two ways:
 * Environment variables,
 * Updating the `/etc/hosts` file.
 
-### Environment Variables
+### Environment variables
 
-When two containers are linked, Docker will set some environment variables
-in the target container to enable programmatic discovery of information
-related to the source container.
+Docker creates several environment variables when you link containers. Docker
+automatically creates environment variables in the target container based on
+the `--link` parameters.  It will also expose all environment variables 
+originating from Docker from the source container. These include variables from:
 
-First, Docker will set an `<alias>_NAME` environment variable specifying the
-alias of each target container that was given in a `--link` parameter. So,
-for example, if a new container called `web` is being linked to a database
-container called `db` via `--link db:webdb` then in the `web` container
-would be `WEBDB_NAME=/web/webdb`.
+* the `ENV` commands in the source container's Dockerfile
+* the `-e`, `--env` and `--env-file` options on the `docker run`
+command when the source container is started
 
-Docker will then also define a set of environment variables for each
-port that is exposed by the source container. The pattern followed is:
+These environment variables enable programmatic discovery from within the
+target container of information related to the source container.
 
-* `<name>_PORT_<port>_<protocol>` will contain a URL reference to the
-port. Where `<name>` is the alias name specified in the `--link` parameter
-(e.g. `webdb`), `<port>` is the port number being exposed, and `<protocol>`
-is either `TCP` or `UDP`. The format of the URL will be: 
-`<protocol>://<container_ip_address>:<port>`
-(e.g. `tcp://172.17.0.82:8080`).  This URL will then be
-split into the following 3 environment variables for convenience:
-* `<name>_PORT_<port>_<protocol>_ADDR` will contain just the IP address 
-from the URL (e.g. `WEBDB_PORT_8080_TCP_ADDR=172.17.0.82`).
-* `<name>_PORT_<port>_<protocol>_PORT` will contain just the port number
-from the URL (e.g. `WEBDB_PORT_8080_TCP_PORT=8080`).
-* `<name>_PORT_<port>_<protocol>_PROTO` will contain just the protocol
-from the URL (e.g. `WEBDB_PORT_8080_TCP_PROTO=tcp`).
+> **Warning**:
+> It is important to understand that *all* environment variables originating
+> from Docker within a container are made available to *any* container
+> that links to it. This could have serious security implications if sensitive
+> data is stored in them.
 
-If there are multiple ports exposed then the above set of environment
-variables will be defined for each one.
+Docker sets an `<alias>_NAME` environment variable for each target container
+listed in the `--link` parameter. For example, if a new container called
+`web` is linked to a database container called `db` via `--link db:webdb`,
+then Docker creates a `WEBDB_NAME=/web/webdb` variable in the `web` container.
 
-Finally, there will be an environment variable called `<alias>_PORT` that will
-contain the URL of the first exposed port of the source container.
-For example, `WEBDB_PORT=tcp://172.17.0.82:8080`. In this case, 'first'
-is defined as the lowest numbered port that is exposed. If that port is
-used for both tcp and udp, then the tcp one will be specified.
+Docker also defines a set of environment variables for each port exposed by the
+source container.  Each variable has a unique prefix in the form:
+
+`<name>_PORT_<port>_<protocol>`
+
+The components in this prefix are:
+
+* the alias `<name>` specified in the `--link` parameter (for example, `webdb`)
+* the `<port>` number exposed
+* a `<protocol>` which is either TCP or UDP
+
+Docker uses this prefix format to define three distinct environment variables:
+
+* The `prefix_ADDR` variable contains the IP Address from the URL, for
+example `WEBDB_PORT_8080_TCP_ADDR=172.17.0.82`.
+* The `prefix_PORT` variable contains just the port number from the URL for
+example `WEBDB_PORT_8080_TCP_PORT=8080`.
+* The `prefix_PROTO` variable contains just the protocol from the URL for
+example `WEBDB_PORT_8080_TCP_PROTO=tcp`.
+
+If the container exposes multiple ports, an environment variable set is
+defined for each one. This means, for example, if a container exposes 4 ports
+that Docker creates 12 environment variables, 3 for each port.
+
+Additionally, Docker creates an environment variable called `<alias>_PORT`.
+This variable contains the URL of the source container's first exposed port.
+The  'first' port is defined as the exposed port with the lowest number.
+For example, consider the `WEBDB_PORT=tcp://172.17.0.82:8080` variable.  If
+that port is used for both tcp and udp, then the tcp one is specified.
+
+Finally, Docker also exposes each Docker originated environment variable
+from the source container as an environment variable in the target. For each
+variable Docker creates an `<alias>_ENV_<name>` variable in the target 
+container. The variable's value is set to the value Docker used when it 
+started the source container.
 
 Returning back to our database example, you can run the `env`
 command to list the specified container's environment variables.
 
 ```
-    $ sudo docker run --rm --name web2 --link db:db training/webapp env
+    $ docker run --rm --name web2 --link db:db training/webapp env
     . . .
     DB_NAME=/web2/db
     DB_PORT=tcp://172.17.0.5:5432
@@ -227,18 +259,25 @@ command to list the specified container's environment variables.
     . . .
 ```
 
-> **Note**:
-> These Environment variables are only set for the first process in the
-> container. Similarly, some daemons (such as `sshd`)
-> will scrub them when spawning shells for connection.
-
 You can see that Docker has created a series of environment variables with
-useful information about the source `db` container. Each variable is prefixed with
+useful information about the source `db` container. Each variable is prefixed
+with
 `DB_`, which is populated from the `alias` you specified above. If the `alias`
 were `db1`, the variables would be prefixed with `DB1_`. You can use these
 environment variables to configure your applications to connect to the database
 on the `db` container. The connection will be secure and private; only the
 linked `web` container will be able to talk to the `db` container.
+
+### Important notes on Docker environment variables
+
+Unlike host entries in the [`/etc/hosts` file](#updating-the-etchosts-file),
+IP addresses stored in the environment variables are not automatically updated
+if the source container is restarted. We recommend using the host entries in
+`/etc/hosts` to resolve the IP address of linked containers.
+
+These environment variables are only set for the first process in the
+container. Some daemons, such as `sshd`, will scrub them when spawning shells
+for connection.
 
 ### Updating the `/etc/hosts` file
 
@@ -246,20 +285,23 @@ In addition to the environment variables, Docker adds a host entry for the
 source container to the `/etc/hosts` file. Here's an entry for the `web`
 container:
 
-    $ sudo docker run -t -i --rm --link db:db training/webapp /bin/bash
+    $ docker run -t -i --rm --link db:webdb training/webapp /bin/bash
     root@aed84ee21bde:/opt/webapp# cat /etc/hosts
     172.17.0.7  aed84ee21bde
     . . .
-    172.17.0.5  db
+    172.17.0.5  webdb 6e5cdeb2d300 db
 
 You can see two relevant host entries. The first is an entry for the `web`
 container that uses the Container ID as a host name. The second entry uses the
-link alias to reference the IP address of the `db` container. You can ping
-that host now via this host name.
+link alias to reference the IP address of the `db` container. In addition to 
+the alias you provide, the linked container's name--if unique from the alias
+provided to the `--link` parameter--and the linked container's hostname will
+also be added in `/etc/hosts` for the linked container's IP address. You can ping
+that host now via any of these entries:
 
     root@aed84ee21bde:/opt/webapp# apt-get install -yqq inetutils-ping
-    root@aed84ee21bde:/opt/webapp# ping db
-    PING db (172.17.0.5): 48 data bytes
+    root@aed84ee21bde:/opt/webapp# ping webdb
+    PING webdb (172.17.0.5): 48 data bytes
     56 bytes from 172.17.0.5: icmp_seq=0 ttl=64 time=0.267 ms
     56 bytes from 172.17.0.5: icmp_seq=1 ttl=64 time=0.250 ms
     56 bytes from 172.17.0.5: icmp_seq=2 ttl=64 time=0.256 ms
@@ -281,7 +323,9 @@ If you restart the source container, the linked containers `/etc/hosts` files
 will be automatically updated with the source container's new IP address,
 allowing linked communication to continue.
 
-    $ sudo docker restart db
+    $ docker restart db
+    db
+    $ docker run -t -i --rm --link db:db training/webapp /bin/bash
     root@aed84ee21bde:/opt/webapp# cat /etc/hosts
     172.17.0.7  aed84ee21bde
     . . .

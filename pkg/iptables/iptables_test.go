@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -16,12 +17,12 @@ var filterChain *Chain
 func TestNewChain(t *testing.T) {
 	var err error
 
-	natChain, err = NewChain(chainName, "lo", Nat)
+	natChain, err = NewChain(chainName, "lo", Nat, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	filterChain, err = NewChain(chainName, "lo", Filter)
+	filterChain, err = NewChain(chainName, "lo", Filter, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,9 +40,7 @@ func TestForward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dnatRule := []string{natChain.Name,
-		"-t", string(natChain.Table),
-		"!", "-i", filterChain.Bridge,
+	dnatRule := []string{
 		"-d", ip.String(),
 		"-p", proto,
 		"--dport", strconv.Itoa(port),
@@ -49,12 +48,11 @@ func TestForward(t *testing.T) {
 		"--to-destination", dstAddr + ":" + strconv.Itoa(dstPort),
 	}
 
-	if !Exists(dnatRule...) {
+	if !Exists(natChain.Table, natChain.Name, dnatRule...) {
 		t.Fatalf("DNAT rule does not exist")
 	}
 
-	filterRule := []string{filterChain.Name,
-		"-t", string(filterChain.Table),
+	filterRule := []string{
 		"!", "-i", filterChain.Bridge,
 		"-o", filterChain.Bridge,
 		"-d", dstAddr,
@@ -63,12 +61,11 @@ func TestForward(t *testing.T) {
 		"-j", "ACCEPT",
 	}
 
-	if !Exists(filterRule...) {
+	if !Exists(filterChain.Table, filterChain.Name, filterRule...) {
 		t.Fatalf("filter rule does not exist")
 	}
 
-	masqRule := []string{"POSTROUTING",
-		"-t", string(natChain.Table),
+	masqRule := []string{
 		"-d", dstAddr,
 		"-s", dstAddr,
 		"-p", proto,
@@ -76,7 +73,7 @@ func TestForward(t *testing.T) {
 		"-j", "MASQUERADE",
 	}
 
-	if !Exists(masqRule...) {
+	if !Exists(natChain.Table, "POSTROUTING", masqRule...) {
 		t.Fatalf("MASQUERADE rule does not exist")
 	}
 }
@@ -94,8 +91,7 @@ func TestLink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rule1 := []string{filterChain.Name,
-		"-t", string(filterChain.Table),
+	rule1 := []string{
 		"-i", filterChain.Bridge,
 		"-o", filterChain.Bridge,
 		"-p", proto,
@@ -104,12 +100,11 @@ func TestLink(t *testing.T) {
 		"--dport", strconv.Itoa(port),
 		"-j", "ACCEPT"}
 
-	if !Exists(rule1...) {
+	if !Exists(filterChain.Table, filterChain.Name, rule1...) {
 		t.Fatalf("rule1 does not exist")
 	}
 
-	rule2 := []string{filterChain.Name,
-		"-t", string(filterChain.Table),
+	rule2 := []string{
 		"-i", filterChain.Bridge,
 		"-o", filterChain.Bridge,
 		"-p", proto,
@@ -118,7 +113,7 @@ func TestLink(t *testing.T) {
 		"--sport", strconv.Itoa(port),
 		"-j", "ACCEPT"}
 
-	if !Exists(rule2...) {
+	if !Exists(filterChain.Table, filterChain.Name, rule2...) {
 		t.Fatalf("rule2 does not exist")
 	}
 }
@@ -133,17 +128,16 @@ func TestPrerouting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rule := []string{"PREROUTING",
-		"-t", string(Nat),
+	rule := []string{
 		"-j", natChain.Name}
 
 	rule = append(rule, args...)
 
-	if !Exists(rule...) {
+	if !Exists(natChain.Table, "PREROUTING", rule...) {
 		t.Fatalf("rule does not exist")
 	}
 
-	delRule := append([]string{"-D"}, rule...)
+	delRule := append([]string{"-D", "PREROUTING", "-t", string(Nat)}, rule...)
 	if _, err = Raw(delRule...); err != nil {
 		t.Fatal(err)
 	}
@@ -159,20 +153,59 @@ func TestOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rule := []string{"OUTPUT",
-		"-t", string(natChain.Table),
+	rule := []string{
 		"-j", natChain.Name}
 
 	rule = append(rule, args...)
 
-	if !Exists(rule...) {
+	if !Exists(natChain.Table, "OUTPUT", rule...) {
 		t.Fatalf("rule does not exist")
 	}
 
-	delRule := append([]string{"-D"}, rule...)
+	delRule := append([]string{"-D", "OUTPUT", "-t",
+		string(natChain.Table)}, rule...)
 	if _, err = Raw(delRule...); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestConcurrencyWithWait(t *testing.T) {
+	RunConcurrencyTest(t, true)
+}
+
+func TestConcurrencyNoWait(t *testing.T) {
+	RunConcurrencyTest(t, false)
+}
+
+// Runs 10 concurrent rule additions. This will fail if iptables
+// is actually invoked simultaneously without --wait.
+// Note that if iptables does not support the xtable lock on this
+// system, then allowXlock has no effect -- it will always be off.
+func RunConcurrencyTest(t *testing.T, allowXlock bool) {
+	var wg sync.WaitGroup
+
+	if !allowXlock && supportsXlock {
+		supportsXlock = false
+		defer func() { supportsXlock = true }()
+	}
+
+	ip := net.ParseIP("192.168.1.1")
+	port := 1234
+	dstAddr := "172.17.0.1"
+	dstPort := 4321
+	proto := "tcp"
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := natChain.Forward(Append, ip, port, proto, dstAddr, dstPort)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestCleanup(t *testing.T) {

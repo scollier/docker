@@ -36,7 +36,7 @@ List containers
         [
              {
                      "Id": "8dfafdbc3a40",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 1",
                      "Created": 1367854155,
                      "Status": "Exit 0",
@@ -46,7 +46,7 @@ List containers
              },
              {
                      "Id": "9cd87474be90",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 222222",
                      "Created": 1367854155,
                      "Status": "Exit 0",
@@ -56,7 +56,7 @@ List containers
              },
              {
                      "Id": "3176a2479c92",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 3333333333333333",
                      "Created": 1367854154,
                      "Status": "Exit 0",
@@ -66,7 +66,7 @@ List containers
              },
              {
                      "Id": "4cb07b47f9fb",
-                     "Image": "base:latest",
+                     "Image": "ubuntu:latest",
                      "Command": "echo 444444444444444444444444444444444",
                      "Created": 1367854152,
                      "Status": "Exit 0",
@@ -128,7 +128,7 @@ Create a container
                      "date"
              ],
              "Entrypoint": "",
-             "Image": "base",
+             "Image": "ubuntu",
              "Volumes": {
                      "/tmp": {}
              },
@@ -138,7 +138,6 @@ Create a container
              "ExposedPorts": {
                      "22/tcp": {}
              },
-             "SecurityOpts": [""],
              "HostConfig": {
                "Binds": ["/tmp:/tmp"],
                "Links": ["redis3:redis"],
@@ -146,14 +145,17 @@ Create a container
                "PortBindings": { "22/tcp": [{ "HostPort": "11022" }] },
                "PublishAllPorts": false,
                "Privileged": false,
+               "ReadonlyRootfs": false,
                "Dns": ["8.8.8.8"],
                "DnsSearch": [""],
+               "ExtraHosts": null,
                "VolumesFrom": ["parent", "other:ro"],
                "CapAdd": ["NET_ADMIN"],
                "CapDrop": ["MKNOD"],
                "RestartPolicy": { "Name": "", "MaximumRetryCount": 0 },
                "NetworkMode": "bridge",
                "Devices": []
+               "SecurityOpt": [""],
             }
         }
 
@@ -173,12 +175,13 @@ Json Parameters:
       container.
 -   **Domainname** - A string value containing the desired domain name to use
       for the container.
--   **User** - A string value containg the user to use inside the container.
+-   **User** - A string value containing the user to use inside the container.
 -   **Memory** - Memory limit in bytes.
--   **MemorySwap**- Total memory usage (memory + swap); set `-1` to disable swap.
+-   **MemorySwap**- Total memory limit (memory + swap); set `-1` to disable swap,
+      always use this with `memory`, and make the value larger than `memory`.
 -   **CpuShares** - An integer value containing the CPU Shares for container
-      (ie. the relative weight vs othercontainers).
-    **CpuSet** - String value containg the cgroups Cpuset to use.
+      (ie. the relative weight vs other containers).
+    **CpuSet** - String value containing the cgroups Cpuset to use.
 -   **AttachStdin** - Boolean value, attaches to stdin.
 -   **AttachStdout** - Boolean value, attaches to stdout.
 -   **AttachStderr** - Boolean value, attaches to stderr.
@@ -194,20 +197,18 @@ Json Parameters:
         container to empty objects.
 -   **WorkingDir** - A string value containing the working dir for commands to
       run in.
--   **NetworkDisabled** - Boolean value, when true disables neworking for the
+-   **NetworkDisabled** - Boolean value, when true disables networking for the
       container
 -   **ExposedPorts** - An object mapping ports to an empty object in the form of:
       `"ExposedPorts": { "<port>/<tcp|udp>: {}" }`
--   **SecurityOpts**: A list of string values to customize labels for MLS
-      systems, such as SELinux.
 -   **HostConfig**
   -   **Binds** – A list of volume bindings for this container.  Each volume
           binding is a string of the form `container_path` (to create a new
           volume for the container), `host_path:container_path` (to bind-mount
           a host path into the container), or `host_path:container_path:ro`
           (to make the bind-mount read-only inside the container).
-  -   **Links** - A list of links for the container.  Each link entry should be of
-        of the form "container_name:alias".
+  -   **Links** - A list of links for the container.  Each link entry should be
+        in the form of "container_name:alias".
   -   **LxcConf** - LXC specific configurations.  These configurations will only
         work when using the `lxc` execution driver.
   -   **PortBindings** - A map of exposed container ports and the host port they
@@ -218,12 +219,16 @@ Json Parameters:
         exposed ports. Specified as a boolean value.
   -   **Privileged** - Gives the container full access to the host.  Specified as
         a boolean value.
+  -   **ReadonlyRootfs** - Mount the container's root filesystem as read only.
+        Specified as a boolean value.
   -   **Dns** - A list of dns servers for the container to use.
   -   **DnsSearch** - A list of DNS search domains
+  -   **ExtraHosts** - A list of hostnames/IP mappings to be added to the
+      container's `/etc/hosts` file. Specified in the form `["hostname:IP"]`.
   -   **VolumesFrom** - A list of volumes to inherit from another container.
         Specified in the form `<container name>[:<ro|rw>]`
-  -   **CapAdd** - A list of kernel capabilties to add to the container.
-  -   **Capdrop** - A list of kernel capabilties to drop from the container.
+  -   **CapAdd** - A list of kernel capabilities to add to the container.
+  -   **Capdrop** - A list of kernel capabilities to drop from the container.
   -   **RestartPolicy** – The behavior to apply when the container exits.  The
           value is an object with a `Name` property of either `"always"` to
           always restart or `"on-failure"` to restart only when the container
@@ -237,6 +242,8 @@ Json Parameters:
   -   **Devices** - A list of devices to add to the container specified in the
         form
         `{ "PathOnHost": "/dev/deviceName", "PathInContainer": "/dev/deviceName", "CgroupPermissions": "mrw"}`
+  -   **SecurityOpt**: A list of string values to customize labels for MLS
+        systems, such as SELinux.
 
 Query Parameters:
 
@@ -266,73 +273,105 @@ Return low-level information on the container `id`
         HTTP/1.1 200 OK
         Content-Type: application/json
 
-        {
-                     "Id": "4fa6e0f0c6786287e131c3852c58a2e01cc697a68231826813597e4994f1d6e2",
-                     "Created": "2013-05-07T14:51:42.041847+02:00",
-                     "Path": "date",
-                     "Args": [],
-                     "Config": {
-                             "Hostname": "4fa6e0f0c678",
-                             "User": "",
-                             "Memory": 0,
-                             "MemorySwap": 0,
-                             "AttachStdin": false,
-                             "AttachStdout": true,
-                             "AttachStderr": true,
-                             "PortSpecs": null,
-                             "Tty": false,
-                             "OpenStdin": false,
-                             "StdinOnce": false,
-                             "Env": null,
-                             "Cmd": [
-                                     "date"
-                             ],
-                             "Dns": null,
-                             "Image": "base",
-                             "Volumes": {},
-                             "VolumesFrom": "",
-                             "WorkingDir": ""
-                     },
-                     "State": {
-                             "Running": false,
-                             "Pid": 0,
-                             "ExitCode": 0,
-                             "StartedAt": "2013-05-07T14:51:42.087658+02:01360",
-                             "Ghost": false
-                     },
-                     "Image": "b750fe79269d2ec9a3c593ef05b4332b1d1a02a62b4accb2c21d589ff2f5f2dc",
-                     "NetworkSettings": {
-                             "IpAddress": "",
-                             "IpPrefixLen": 0,
-                             "Gateway": "",
-                             "Bridge": "",
-                             "PortMapping": null
-                     },
-                     "SysInitPath": "/home/kitty/go/src/github.com/docker/docker/bin/docker",
-                     "ResolvConfPath": "/etc/resolv.conf",
-                     "Volumes": {},
-                     "ExecIDs": [
-                         "15f211491dced6a353a2e0f37fe3f3692ee2370a4782418e9bf7052865c10fde"
-                     ],
-                     "HostConfig": {
-                         "Binds": null,
-                         "ContainerIDFile": "",
-                         "LxcConf": [],
-                         "Privileged": false,
-                         "PortBindings": {
-                            "80/tcp": [
-                                {
-                                    "HostIp": "0.0.0.0",
-                                    "HostPort": "49153"
-                                }
-                            ]
-                         },
-                         "Links": ["/name:alias"],
-                         "PublishAllPorts": false,
-                         "CapAdd": ["NET_ADMIN"],
-                         "CapDrop": ["MKNOD"]
-                     }
-        }
+	{
+		"AppArmorProfile": "",
+		"Args": [
+			"-c",
+			"exit 9"
+		],
+		"Config": {
+			"AttachStderr": true,
+			"AttachStdin": false,
+			"AttachStdout": true,
+			"Cmd": [
+				"/bin/sh",
+				"-c",
+				"exit 9"
+			],
+			"CpuShares": 0,
+			"Cpuset": "",
+			"Domainname": "",
+			"Entrypoint": null,
+			"Env": [
+				"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+			],
+			"ExposedPorts": null,
+			"Hostname": "ba033ac44011",
+			"Image": "ubuntu",
+			"MacAddress": "",
+			"Memory": 0,
+			"MemorySwap": 0,
+			"NetworkDisabled": false,
+			"OnBuild": null,
+			"OpenStdin": false,
+			"PortSpecs": null,
+			"StdinOnce": false,
+			"Tty": false,
+			"User": "",
+			"Volumes": null,
+			"WorkingDir": ""
+		},
+		"Created": "2015-01-06T15:47:31.485331387Z",
+		"Driver": "devicemapper",
+		"ExecDriver": "native-0.2",
+		"ExecIDs": null,
+		"HostConfig": {
+			"Binds": null,
+			"CapAdd": null,
+			"CapDrop": null,
+			"ContainerIDFile": "",
+			"Devices": [],
+			"Dns": null,
+			"DnsSearch": null,
+			"ExtraHosts": null,
+			"IpcMode": "",
+			"Links": null,
+			"LxcConf": [],
+			"NetworkMode": "bridge",
+			"PortBindings": {},
+			"Privileged": false,
+			"ReadonlyRootfs": false,
+			"PublishAllPorts": false,
+			"RestartPolicy": {
+				"MaximumRetryCount": 2,
+				"Name": "on-failure"
+			},
+			"SecurityOpt": null,
+			"VolumesFrom": null
+		},
+		"HostnamePath": "/var/lib/docker/containers/ba033ac4401106a3b513bc9d639eee123ad78ca3616b921167cd74b20e25ed39/hostname",
+		"HostsPath": "/var/lib/docker/containers/ba033ac4401106a3b513bc9d639eee123ad78ca3616b921167cd74b20e25ed39/hosts",
+		"Id": "ba033ac4401106a3b513bc9d639eee123ad78ca3616b921167cd74b20e25ed39",
+		"Image": "04c5d3b7b0656168630d3ba35d8889bd0e9caafcaeb3004d2bfbc47e7c5d35d2",
+		"MountLabel": "",
+		"Name": "/boring_euclid",
+		"NetworkSettings": {
+			"Bridge": "",
+			"Gateway": "",
+			"IPAddress": "",
+			"IPPrefixLen": 0,
+			"MacAddress": "",
+			"PortMapping": null,
+			"Ports": null
+		},
+		"Path": "/bin/sh",
+		"ProcessLabel": "",
+		"ResolvConfPath": "/var/lib/docker/containers/ba033ac4401106a3b513bc9d639eee123ad78ca3616b921167cd74b20e25ed39/resolv.conf",
+		"RestartCount": 1,
+		"State": {
+			"Error": "",
+			"ExitCode": 9,
+			"FinishedAt": "2015-01-06T15:47:32.080254511Z",
+			"OOMKilled": false,
+			"Paused": false,
+			"Pid": 0,
+			"Restarting": false,
+			"Running": false,
+			"StartedAt": "2015-01-06T15:47:32.072697474Z"
+		},
+		"Volumes": {},
+		"VolumesRW": {}
+	}
 
 Status Codes:
 
@@ -479,6 +518,94 @@ Status Codes:
 -   **404** – no such container
 -   **500** – server error
 
+### Get container stats based on resource usage
+
+`GET /containers/(id)/stats`
+
+This endpoint returns a live stream of a container's resource usage statistics.
+
+**Example request**:
+
+        GET /containers/redis1/stats HTTP/1.1
+
+**Example response**:
+
+        HTTP/1.1 200 OK
+        Content-Type: application/json
+
+        {
+           "read" : "2015-01-08T22:57:31.547920715Z",
+           "network" : {
+              "rx_dropped" : 0,
+              "rx_bytes" : 648,
+              "rx_errors" : 0,
+              "tx_packets" : 8,
+              "tx_dropped" : 0,
+              "rx_packets" : 8,
+              "tx_errors" : 0,
+              "tx_bytes" : 648
+           },
+           "memory_stats" : {
+              "stats" : {
+                 "total_pgmajfault" : 0,
+                 "cache" : 0,
+                 "mapped_file" : 0,
+                 "total_inactive_file" : 0,
+                 "pgpgout" : 414,
+                 "rss" : 6537216,
+                 "total_mapped_file" : 0,
+                 "writeback" : 0,
+                 "unevictable" : 0,
+                 "pgpgin" : 477,
+                 "total_unevictable" : 0,
+                 "pgmajfault" : 0,
+                 "total_rss" : 6537216,
+                 "total_rss_huge" : 6291456,
+                 "total_writeback" : 0,
+                 "total_inactive_anon" : 0,
+                 "rss_huge" : 6291456,
+                 "hierarchical_memory_limit" : 67108864,
+                 "total_pgfault" : 964,
+                 "total_active_file" : 0,
+                 "active_anon" : 6537216,
+                 "total_active_anon" : 6537216,
+                 "total_pgpgout" : 414,
+                 "total_cache" : 0,
+                 "inactive_anon" : 0,
+                 "active_file" : 0,
+                 "pgfault" : 964,
+                 "inactive_file" : 0,
+                 "total_pgpgin" : 477
+              },
+              "max_usage" : 6651904,
+              "usage" : 6537216,
+              "failcnt" : 0,
+              "limit" : 67108864
+           },
+           "blkio_stats" : {},
+           "cpu_stats" : {
+              "cpu_usage" : {
+                 "percpu_usage" : [
+                    16970827,
+                    1839451,
+                    7107380,
+                    10571290
+                 ],
+                 "usage_in_usermode" : 10000000,
+                 "total_usage" : 36488948,
+                 "usage_in_kernelmode" : 20000000
+              },
+              "system_cpu_usage" : 20091722000000000,
+              "throttling_data" : {}
+           }
+        }
+
+Status Codes:
+
+-   **200** – no error
+-   **404** – no such container
+-   **500** – server error
+
 ### Resize a container TTY
 
 `POST /containers/(id)/resize?h=<height>&w=<width>`
@@ -512,11 +639,68 @@ Start the container `id`
         POST /containers/(id)/start HTTP/1.1
         Content-Type: application/json
 
+        {
+             "Binds": ["/tmp:/tmp"],
+             "Links": ["redis3:redis"],
+             "LxcConf": {"lxc.utsname":"docker"},
+             "PortBindings": { "22/tcp": [{ "HostPort": "11022" }] },
+             "PublishAllPorts": false,
+             "Privileged": false,
+             "ReadonlyRootfs": false,
+             "Dns": ["8.8.8.8"],
+             "DnsSearch": [""],
+             "VolumesFrom": ["parent", "other:ro"],
+             "CapAdd": ["NET_ADMIN"],
+             "CapDrop": ["MKNOD"],
+             "RestartPolicy": { "Name": "", "MaximumRetryCount": 0 },
+             "NetworkMode": "bridge",
+             "Devices": []
+        }
+
 **Example response**:
 
         HTTP/1.1 204 No Content
 
 Json Parameters:
+
+-   **Binds** – A list of volume bindings for this container.  Each volume
+        binding is a string of the form `container_path` (to create a new
+        volume for the container), `host_path:container_path` (to bind-mount
+        a host path into the container), or `host_path:container_path:ro`
+        (to make the bind-mount read-only inside the container).
+-   **Links** - A list of links for the container.  Each link entry should be of
+      of the form "container_name:alias".
+-   **LxcConf** - LXC specific configurations.  These configurations will only
+      work when using the `lxc` execution driver.
+-   **PortBindings** - A map of exposed container ports and the host port they
+      should map to. It should be specified in the form
+      `{ <port>/<protocol>: [{ "HostPort": "<port>" }] }`
+      Take note that `port` is specified as a string and not an integer value.
+-   **PublishAllPorts** - Allocates a random host port for all of a container's
+      exposed ports. Specified as a boolean value.
+-   **Privileged** - Gives the container full access to the host.  Specified as
+      a boolean value.
+-   **ReadonlyRootfs** - Mount the container's root filesystem as read only.
+      Specified as a boolean value.
+-   **Dns** - A list of dns servers for the container to use.
+-   **DnsSearch** - A list of DNS search domains
+-   **VolumesFrom** - A list of volumes to inherit from another container.
+      Specified in the form `<container name>[:<ro|rw>]`
+-   **CapAdd** - A list of kernel capabilities to add to the container.
+-   **Capdrop** - A list of kernel capabilities to drop from the container.
+-   **RestartPolicy** – The behavior to apply when the container exits.  The
+        value is an object with a `Name` property of either `"always"` to
+        always restart or `"on-failure"` to restart only when the container
+        exit code is non-zero.  If `on-failure` is used, `MaximumRetryCount`
+        controls the number of times to retry before giving up.
+        The default is not to restart. (optional)
+        An ever increasing delay (double the previous delay, starting at 100mS)
+        is added before each restart to prevent flooding the server.
+-   **NetworkMode** - Sets the networking mode for the container. Supported
+      values are: `bridge`, `host`, and `container:<name|id>`
+-   **Devices** - A list of devices to add to the container specified in the
+      form
+      `{ "PathOnHost": "/dev/deviceName", "PathInContainer": "/dev/deviceName", "CgroupPermissions": "mrw"}`
 
 Status Codes:
 
@@ -597,6 +781,31 @@ Status Codes:
 
 -   **204** – no error
 -   **404** – no such container
+-   **500** – server error
+
+### Rename a container
+
+`POST /containers/(id)/rename`
+
+Rename the container `id` to a `new_name`
+
+**Example request**:
+
+        POST /containers/e90e34656806/rename?name=new_name HTTP/1.1
+
+**Example response**:
+
+        HTTP/1.1 204 No Content
+
+Query Parameters:
+
+-   **name** – new name for the container
+
+Status Codes:
+
+-   **204** – no error
+-   **404** – no such container
+-   **409** - conflict name already assigned
 -   **500** – server error
 
 ### Pause a container
@@ -718,9 +927,44 @@ Status Codes:
 
     1.  Read 8 bytes
     2.  chose stdout or stderr depending on the first byte
-    3.  Extract the frame size from the last 4 byets
+    3.  Extract the frame size from the last 4 bytes
     4.  Read the extracted size and output it on the correct output
     5.  Goto 1
+
+### Attach to a container (websocket)
+
+`GET /containers/(id)/attach/ws`
+
+Attach to the container `id` via websocket
+
+Implements websocket protocol handshake according to [RFC 6455](http://tools.ietf.org/html/rfc6455)
+
+**Example request**
+
+        GET /containers/e90e34656806/attach/ws?logs=0&stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1
+
+**Example response**
+
+        {{ STREAM }}
+
+Query Parameters:
+
+-   **logs** – 1/True/true or 0/False/false, return logs. Default false
+-   **stream** – 1/True/true or 0/False/false, return stream.
+        Default false
+-   **stdin** – 1/True/true or 0/False/false, if stream=true, attach
+        to stdin. Default false
+-   **stdout** – 1/True/true or 0/False/false, if logs=true, return
+        stdout log, if stream=true, attach to stdout. Default false
+-   **stderr** – 1/True/true or 0/False/false, if logs=true, return
+        stderr log, if stream=true, attach to stderr. Default false
+
+Status Codes:
+
+-   **200** – no error
+-   **400** – bad parameter
+-   **404** – no such container
+-   **500** – server error
 
 ### Wait a container
 
@@ -848,6 +1092,61 @@ Query Parameters:
 -   **filters** – a json encoded value of the filters (a map[string][]string) to process on the images list. Available filters:
   -   dangling=true
 
+### Build image from a Dockerfile
+
+`POST /build`
+
+Build an image from a Dockerfile
+
+**Example request**:
+
+        POST /build HTTP/1.1
+
+        {{ TAR STREAM }}
+
+**Example response**:
+
+        HTTP/1.1 200 OK
+        Content-Type: application/json
+
+        {"stream": "Step 1..."}
+        {"stream": "..."}
+        {"error": "Error...", "errorDetail": {"code": 123, "message": "Error..."}}
+
+The input stream must be a tar archive compressed with one of the
+following algorithms: identity (no compression), gzip, bzip2, xz.
+
+The archive must include a build instructions file, typically called
+`Dockerfile` at the root of the archive. The `dockerfile` parameter may be
+used to specify a different build instructions file by having its value be
+the path to the alternate build instructions file to use.
+
+The archive may include any number of other files,
+which will be accessible in the build context (See the [*ADD build
+command*](/reference/builder/#dockerbuilder)).
+
+Query Parameters:
+
+-   **dockerfile** - path within the build context to the Dockerfile
+-   **t** – repository name (and optionally a tag) to be applied to
+        the resulting image in case of success
+-   **remote** – git or HTTP/HTTPS URI build source
+-   **q** – suppress verbose build output
+-   **nocache** – do not use the cache when building the image
+-   **pull** - attempt to pull the image even if an older image exists locally
+-   **rm** - remove intermediate containers after a successful build (default behavior)
+-   **forcerm** - always remove intermediate containers (includes rm)
+
+    Request Headers:
+
+-   **Content-type** – should be set to `"application/tar"`.
+-   **X-Registry-Config** – base64-encoded ConfigFile object
+
+Status Codes:
+
+-   **200** – no error
+-   **500** – server error
+
 ### Create an image
 
 `POST /images/create`
@@ -856,7 +1155,7 @@ Create an image, either by pulling it from the registry or by importing it
 
 **Example request**:
 
-        POST /images/create?fromImage=base HTTP/1.1
+        POST /images/create?fromImage=ubuntu HTTP/1.1
 
 **Example response**:
 
@@ -900,7 +1199,7 @@ Return low-level information on the image `name`
 
 **Example request**:
 
-        GET /images/base/json HTTP/1.1
+        GET /images/ubuntu/json HTTP/1.1
 
 **Example response**:
 
@@ -926,7 +1225,7 @@ Return low-level information on the image `name`
                              "Env": null,
                              "Cmd": ["/bin/bash"],
                              "Dns": null,
-                             "Image": "base",
+                             "Image": "ubuntu",
                              "Volumes": null,
                              "VolumesFrom": "",
                              "WorkingDir": ""
@@ -950,7 +1249,7 @@ Return the history of the image `name`
 
 **Example request**:
 
-        GET /images/base/history HTTP/1.1
+        GET /images/ubuntu/history HTTP/1.1
 
 **Example response**:
 
@@ -1135,60 +1434,6 @@ Status Codes:
 -   **500** – server error
 
 ## 2.3 Misc
-
-### Build an image from Dockerfile via stdin
-
-`POST /build`
-
-Build an image from Dockerfile via stdin
-
-**Example request**:
-
-        POST /build HTTP/1.1
-
-        {{ TAR STREAM }}
-
-**Example response**:
-
-        HTTP/1.1 200 OK
-        Content-Type: application/json
-
-        {"stream": "Step 1..."}
-        {"stream": "..."}
-        {"error": "Error...", "errorDetail": {"code": 123, "message": "Error..."}}
-
-The input stream must be a tar archive compressed with one of the
-following algorithms: identity (no compression), gzip, bzip2, xz.
-
-The archive must include a build instructions file, typically called
-`Dockerfile` at the root of the archive. The `f` parameter may be used
-to specify a different build instructions file by having its value be
-the path to the alternate build instructions file to use.
-
-The archive may include any number of other files,
-which will be accessible in the build context (See the [*ADD build
-command*](/reference/builder/#dockerbuilder)).
-
-Query Parameters:
-
--   **dockerfile** - path within the build context to the Dockerfile
--   **t** – repository name (and optionally a tag) to be applied to
-        the resulting image in case of success
--   **q** – suppress verbose build output
--   **nocache** – do not use the cache when building the image
--   **pull** - attempt to pull the image even if an older image exists locally
--   **rm** - remove intermediate containers after a successful build (default behavior)
--   **forcerm** - always remove intermediate containers (includes rm)
-
-    Request Headers:
-
--   **Content-type** – should be set to `"application/tar"`.
--   **X-Registry-Config** – base64-encoded ConfigFile objec
-
-Status Codes:
-
--   **200** – no error
--   **500** – server error
 
 ### Check auth configuration
 
@@ -1403,10 +1648,10 @@ and Docker images will report:
         HTTP/1.1 200 OK
         Content-Type: application/json
 
-        {"status": "create", "id": "dfdf82bd3881","from": "base:latest", "time":1374067924}
-        {"status": "start", "id": "dfdf82bd3881","from": "base:latest", "time":1374067924}
-        {"status": "stop", "id": "dfdf82bd3881","from": "base:latest", "time":1374067966}
-        {"status": "destroy", "id": "dfdf82bd3881","from": "base:latest", "time":1374067970}
+        {"status": "create", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067924}
+        {"status": "start", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067924}
+        {"status": "stop", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067966}
+        {"status": "destroy", "id": "dfdf82bd3881","from": "ubuntu:latest", "time":1374067970}
 
 Query Parameters:
 
@@ -1430,7 +1675,7 @@ Get a tarball containing all images and metadata for the repository specified
 by `name`.
 
 If `name` is a specific name and tag (e.g. ubuntu:latest), then only that image
-(and its parents) are returned. If `name` is an image ID, similarly only tha
+(and its parents) are returned. If `name` is an image ID, similarly only that
 image (and its parents) are returned, but with the exclusion of the
 'repositories' file in the tarball, as there were no image names referenced.
 
@@ -1616,12 +1861,12 @@ This API is valid only if `tty` was specified as part of creating and starting t
 **Example request**:
 
         POST /exec/e90e34656806/resize HTTP/1.1
-        Content-Type: plain/text
+        Content-Type: text/plain
 
 **Example response**:
 
         HTTP/1.1 201 OK
-        Content-Type: plain/text
+        Content-Type: text/plain
 
 Query Parameters:
 
@@ -1780,7 +2025,7 @@ This might change in the future.
 
 ## 3.3 CORS Requests
 
-To enable cross origin requests to the remote api add the flag
-"--api-enable-cors" when running docker in daemon mode.
+To set cross origin requests to the remote api, please add flag "--api-enable-cors"
+when running docker in daemon mode.
 
-    $ docker -d -H="192.168.1.9:2375" --api-enable-cors
+    $ docker -d -H="192.168.1.9:2375" --api-enable-cors 

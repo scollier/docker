@@ -1,8 +1,8 @@
-page_title: Automatically Start Containers
+page_title: Automatically start containers
 page_description: How to generate scripts for upstart, systemd, etc.
 page_keywords: systemd, upstart, supervisor, docker, documentation, host integration
 
-# Automatically Start Containers
+# Automatically start containers
 
 As of Docker 1.2,
 [restart policies](/reference/commandline/cli/#restart-policies) are the
@@ -18,7 +18,7 @@ that depend on Docker containers), you can use a process manager like
 [supervisor](http://supervisord.org/) instead.
 
 
-## Using a Process Manager
+## Using a process manager
 
 Docker does not set any restart policies by default, but be aware that they will
 conflict with most process managers. So don't set restart policies if you are
@@ -59,12 +59,11 @@ a new service that will be started after the docker daemon service has started.
       /usr/bin/docker start -a redis_server
     end script
 
-
 ### systemd
 
     [Unit]
     Description=Redis container
-    Author=Me
+    Requires=docker.service
     After=docker.service
 
     [Service]
@@ -74,3 +73,14 @@ a new service that will be started after the docker daemon service has started.
 
     [Install]
     WantedBy=local.target
+
+If you need to pass options to the redis container (such as `--env`),
+then you'll need to use `docker run` rather than `docker start`. This will
+create a new container every time the service is started, which will be stopped
+and removed when the service is stopped.
+
+    [Service]
+    ...
+    ExecStart=/usr/bin/docker run --env foo=bar --name redis_server redis
+    ExecStop=/usr/bin/docker stop -t 2 redis_server ; /usr/bin/docker rm -f redis_server
+    ...

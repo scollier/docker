@@ -1,8 +1,8 @@
-page_title: Dockerizing a Node.js Web App
+page_title: Dockerizing a Node.js web app
 page_description: Installing and running a Node.js app with Docker
 page_keywords: docker, example, package installation, node, centos
 
-# Dockerizing a Node.js Web App
+# Dockerizing a Node.js web app
 
 > **Note**: 
 > - **If you don't like sudo** then see [*Giving non-root
@@ -125,11 +125,11 @@ Go to the directory that has your `Dockerfile` and run the following command
 to build a Docker image. The `-t` flag lets you tag your image so it's easier
 to find later using the `docker images` command:
 
-    $ sudo docker build -t <your username>/centos-node-hello .
+    $ docker build -t <your username>/centos-node-hello .
 
 Your image will now be listed by Docker:
 
-    $ sudo docker images
+    $ docker images
 
     # Example
     REPOSITORY                          TAG        ID              CREATED
@@ -142,24 +142,24 @@ Running your image with `-d` runs the container in detached mode, leaving the
 container running in the background. The `-p` flag redirects a public port to
 a private port in the container. Run the image you previously built:
 
-    $ sudo docker run -p 49160:8080 -d <your username>/centos-node-hello
+    $ docker run -p 49160:8080 -d <your username>/centos-node-hello
 
 Print the output of your app:
 
     # Get container ID
-    $ sudo docker ps
+    $ docker ps
 
     # Print app output
-    $ sudo docker logs <container id>
+    $ docker logs <container id>
 
     # Example
     Running on http://localhost:8080
 
 ## Test
 
-To test your app, get the the port of your app that Docker mapped:
+To test your app, get the port of your app that Docker mapped:
 
-    $ sudo docker ps
+    $ docker ps
 
     # Example
     ID            IMAGE                                     COMMAND              ...   PORTS
@@ -180,6 +180,11 @@ Now you can call your app using `curl` (install if needed via:
     Connection: keep-alive
 
     Hello world
+
+If you use Boot2docker on OS X, the port is actually mapped to the Docker host VM,
+and you should use the following command:
+
+    $ curl $(boot2docker ip):49160
 
 We hope this tutorial helped you get up and running with Node.js and
 CentOS on Docker. You can get the full source code at

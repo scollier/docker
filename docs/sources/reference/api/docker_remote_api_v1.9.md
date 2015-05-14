@@ -557,9 +557,44 @@ Status Codes:
 
     1.  Read 8 bytes
     2.  chose stdout or stderr depending on the first byte
-    3.  Extract the frame size from the last 4 byets
+    3.  Extract the frame size from the last 4 bytes
     4.  Read the extracted size and output it on the correct output
     5.  Goto 1)
+
+### Attach to a container (websocket)
+
+`GET /containers/(id)/attach/ws`
+
+Attach to the container `id` via websocket
+
+Implements websocket protocol handshake according to [RFC 6455](http://tools.ietf.org/html/rfc6455)
+
+**Example request**
+
+        GET /containers/e90e34656806/attach/ws?logs=0&stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1
+
+**Example response**
+
+        {{ STREAM }}
+
+Query Parameters:
+
+-   **logs** – 1/True/true or 0/False/false, return logs. Default false
+-   **stream** – 1/True/true or 0/False/false, return stream.
+        Default false
+-   **stdin** – 1/True/true or 0/False/false, if stream=true, attach
+        to stdin. Default false
+-   **stdout** – 1/True/true or 0/False/false, if logs=true, return
+        stdout log, if stream=true, attach to stdout. Default false
+-   **stderr** – 1/True/true or 0/False/false, if logs=true, return
+        stderr log, if stream=true, attach to stderr. Default false
+
+Status Codes:
+
+-   **200** – no error
+-   **400** – bad parameter
+-   **404** – no such container
+-   **500** – server error
 
 ### Wait a container
 
@@ -640,7 +675,7 @@ Status Codes:
 
 ## 2.2 Images
 
-### List Images
+### List images
 
 `GET /images/json`
 
@@ -1009,6 +1044,7 @@ Query Parameters:
 
 -   **t** – repository name (and optionally a tag) to be applied to
     the resulting image in case of success
+-   **remote** – build source URI (git or HTTPS/HTTP)
 -   **q** – suppress verbose build output
 -   **nocache** – do not use the cache when building the image
 -   **rm** – Remove intermediate containers after a successful build
@@ -1016,7 +1052,7 @@ Query Parameters:
     Request Headers:
 
 -   **Content-type** – should be set to `"application/tar"`.
--   **X-Registry-Config** – base64-encoded ConfigFile objec
+-   **X-Registry-Config** – base64-encoded ConfigFile object
 
 Status Codes:
 
@@ -1083,7 +1119,7 @@ Status Codes:
 -   **200** – no error
 -   **500** – server error
 
-### Show the docker version information
+### Show the Docker version information
 
 `GET /version`
 
@@ -1307,7 +1343,7 @@ Here are the steps of `docker run` :
 In this version of the API, /attach, uses hijacking to transport stdin,
 stdout and stderr on the same socket. This might change in the future.
 
-## 3.3 CORS Requests
+## 3.3 CORS requests
 
 To enable cross origin requests to the remote api add the flag
 "--api-enable-cors" when running docker in daemon mode.

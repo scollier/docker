@@ -26,10 +26,15 @@
 FROM ubuntu:14.04
 MAINTAINER Tianon Gravi <admwiggin@gmail.com> (@tianon)
 
+RUN	apt-key adv --keyserver pool.sks-keyservers.net --recv-keys E871F18B51E0147C77796AC81196BA81F6B0FC61
+RUN	echo deb http://ppa.launchpad.net/zfs-native/stable/ubuntu trusty main > /etc/apt/sources.list.d/zfs.list
+
 # Packaged dependencies
 RUN apt-get update && apt-get install -y \
+	apparmor \
 	aufs-tools \
 	automake \
+	bash-completion \
 	btrfs-tools \
 	build-essential \
 	curl \
@@ -39,7 +44,6 @@ RUN apt-get update && apt-get install -y \
 	libapparmor-dev \
 	libcap-dev \
 	libsqlite3-dev \
-	lxc=1.0* \
 	mercurial \
 	parallel \
 	python-mock \
@@ -49,6 +53,8 @@ RUN apt-get update && apt-get install -y \
 	ruby1.9.1 \
 	ruby1.9.1-dev \
 	s3cmd=1.1.0* \
+	ubuntu-zfs \
+	libzfs-dev \
 	--no-install-recommends
 
 # Get lvm2 source for compiling statically
@@ -62,11 +68,22 @@ RUN cd /usr/local/lvm2 \
 	&& make install_device-mapper
 # see https://git.fedorahosted.org/cgit/lvm2.git/tree/INSTALL
 
+# Install lxc
+ENV LXC_VERSION 1.0.7
+RUN mkdir -p /usr/src/lxc \
+	&& curl -sSL https://linuxcontainers.org/downloads/lxc/lxc-${LXC_VERSION}.tar.gz | tar -v -C /usr/src/lxc/ -xz --strip-components=1
+RUN cd /usr/src/lxc \
+	&& ./configure \
+	&& make \
+	&& make install \
+	&& ldconfig
+
 # Install Go
-RUN curl -sSL https://golang.org/dl/go1.4.src.tar.gz | tar -v -C /usr/local -xz
-ENV PATH /usr/local/go/bin:$PATH
+ENV GO_VERSION 1.4.2
+RUN curl -sSL https://golang.org/dl/go${GO_VERSION}.src.tar.gz | tar -v -C /usr/local -xz \
+	&& mkdir -p /go/bin
+ENV PATH /go/bin:/usr/local/go/bin:$PATH
 ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
-ENV PATH /go/bin:$PATH
 RUN cd /usr/local/go/src && ./make.bash --no-clean 2>&1
 
 # Compile Go for cross compilation
@@ -86,23 +103,36 @@ RUN cd /usr/local/go/src \
 			./make.bash --no-clean 2>&1; \
 	done
 
-# reinstall standard library with netgo
-RUN go clean -i net && go install -tags netgo std
+# This has been commented out and kept as reference because we don't support compiling with older Go anymore.
+# ENV GOFMT_VERSION 1.3.3
+# RUN curl -sSL https://storage.googleapis.com/golang/go${GOFMT_VERSION}.$(go env GOOS)-$(go env GOARCH).tar.gz | tar -C /go/bin -xz --strip-components=2 go/bin/gofmt
 
+# Update this sha when we upgrade to go 1.5.0
+ENV GO_TOOLS_COMMIT 069d2f3bcb68257b627205f0486d6cc69a231ff9
 # Grab Go's cover tool for dead-simple code coverage testing
-RUN go get golang.org/x/tools/cmd/cover
+# Grab Go's vet tool for examining go code to find suspicious constructs
+# and help prevent errors that the compiler might not catch
+RUN git clone https://github.com/golang/tools.git /go/src/golang.org/x/tools \
+	&& (cd /go/src/golang.org/x/tools && git checkout -q $GO_TOOLS_COMMIT) \
+	&& go install -v golang.org/x/tools/cmd/cover \
+	&& go install -v golang.org/x/tools/cmd/vet
 
 # TODO replace FPM with some very minimal debhelper stuff
 RUN gem install --no-rdoc --no-ri fpm --version 1.3.2
 
-# Get the "busybox" image source so we can build locally instead of pulling
-RUN git clone -b buildroot-2014.02 https://github.com/jpetazzo/docker-busybox.git /docker-busybox
-
-# Get the "cirros" image source so we can import it instead of fetching it during tests
-RUN curl -sSL -o /cirros.tar.gz https://github.com/ewindisch/docker-cirros/raw/1cded459668e8b9dbf4ef976c94c05add9bbd8e9/cirros-0.3.0-x86_64-lxc.tar.gz
+# Install registry
+ENV REGISTRY_COMMIT d957768537c5af40e4f4cd96871f7b2bde9e2923
+RUN set -x \
+	&& git clone https://github.com/docker/distribution.git /go/src/github.com/docker/distribution \
+	&& (cd /go/src/github.com/docker/distribution && git checkout -q $REGISTRY_COMMIT) \
+	&& GOPATH=/go/src/github.com/docker/distribution/Godeps/_workspace:/go \
+		go build -o /go/bin/registry-v2 github.com/docker/distribution/cmd/registry
 
 # Get the "docker-py" source so we can run their integration tests
-RUN git clone -b 0.7.0 https://github.com/docker/docker-py.git /docker-py
+ENV DOCKER_PY_COMMIT 91985b239764fe54714fa0a93d52aa362357d251
+RUN git clone https://github.com/docker/docker-py.git /docker-py \
+	&& cd /docker-py \
+	&& git checkout -q $DOCKER_PY_COMMIT
 
 # Setup s3cmd config
 RUN { \
@@ -120,15 +150,36 @@ RUN useradd --create-home --gid docker unprivilegeduser
 
 VOLUME /var/lib/docker
 WORKDIR /go/src/github.com/docker/docker
-ENV DOCKER_BUILDTAGS apparmor selinux btrfs_noversion
+ENV DOCKER_BUILDTAGS apparmor selinux
 
-# Install man page generator
-COPY vendor /go/src/github.com/docker/docker/vendor
-# (copy vendor/ because go-md2man needs golang.org/x/net)
+# Let us use a .bashrc file
+RUN ln -sfv $PWD/.bashrc ~/.bashrc
+
+# Register Docker's bash completion.
+RUN ln -sv $PWD/contrib/completion/bash/docker /etc/bash_completion.d/docker
+
+# Get useful and necessary Hub images so we can "docker load" locally instead of pulling
+COPY contrib/download-frozen-image.sh /go/src/github.com/docker/docker/contrib/
+RUN ./contrib/download-frozen-image.sh /docker-frozen-images \
+	busybox:latest@4986bf8c15363d1c5d15512d5266f8777bfba4974ac56e3270e7760f6f0a8125 \
+	hello-world:frozen@e45a5af57b00862e5ef5782a9925979a02ba2b12dff832fd0991335f4a11e5c5
+# see also "hack/make/.ensure-frozen-images" (which needs to be updated any time this list is)
+
+# Download man page generator
 RUN set -x \
-	&& git clone -b v1 https://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
-	&& git clone -b v1.2 https://github.com/russross/blackfriday.git /go/src/github.com/russross/blackfriday \
-	&& go install -v github.com/cpuguy83/go-md2man
+	&& git clone -b v1.0.1 https://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
+	&& git clone -b v1.2 https://github.com/russross/blackfriday.git /go/src/github.com/russross/blackfriday
+
+# Download toml validator
+ENV TOMLV_COMMIT 9baf8a8a9f2ed20a8e54160840c492f937eeaf9a
+RUN set -x \
+	&& git clone https://github.com/BurntSushi/toml.git /go/src/github.com/BurntSushi/toml \
+	&& (cd /go/src/github.com/BurntSushi/toml && git checkout -q $TOMLV_COMMIT)
+
+# copy vendor/ because go-md2man needs golang.org/x/net
+COPY vendor /go/src/github.com/docker/docker/vendor
+RUN go install -v github.com/cpuguy83/go-md2man \
+	github.com/BurntSushi/toml/cmd/tomlv
 
 # Wrap all commands in the "docker-in-docker" script to allow nested containers
 ENTRYPOINT ["hack/dind"]

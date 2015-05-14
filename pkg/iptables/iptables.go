@@ -8,8 +8,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 )
 
 type Action string
@@ -21,10 +22,14 @@ const (
 	Insert Action = "-I"
 	Nat    Table  = "nat"
 	Filter Table  = "filter"
+	Mangle Table  = "mangle"
 )
 
 var (
-	supportsXlock       = false
+	iptablesPath  string
+	supportsXlock = false
+	// used to lock iptables commands if xtables lock is not supported
+	bestEffortLock      sync.Mutex
 	ErrIptablesNotFound = errors.New("Iptables not found")
 )
 
@@ -39,15 +44,24 @@ type ChainError struct {
 	Output []byte
 }
 
-func (e *ChainError) Error() string {
+func (e ChainError) Error() string {
 	return fmt.Sprintf("Error iptables %s: %s", e.Chain, string(e.Output))
 }
 
-func init() {
-	supportsXlock = exec.Command("iptables", "--wait", "-L", "-n").Run() == nil
+func initCheck() error {
+
+	if iptablesPath == "" {
+		path, err := exec.LookPath("iptables")
+		if err != nil {
+			return ErrIptablesNotFound
+		}
+		iptablesPath = path
+		supportsXlock = exec.Command(iptablesPath, "--wait", "-L", "-n").Run() == nil
+	}
+	return nil
 }
 
-func NewChain(name, bridge string, table Table) (*Chain, error) {
+func NewChain(name, bridge string, table Table, hairpinMode bool) (*Chain, error) {
 	c := &Chain{
 		Name:   name,
 		Bridge: bridge,
@@ -72,26 +86,28 @@ func NewChain(name, bridge string, table Table) (*Chain, error) {
 		preroute := []string{
 			"-m", "addrtype",
 			"--dst-type", "LOCAL"}
-		if !Exists(preroute...) {
+		if !Exists(Nat, "PREROUTING", preroute...) {
 			if err := c.Prerouting(Append, preroute...); err != nil {
 				return nil, fmt.Errorf("Failed to inject docker in PREROUTING chain: %s", err)
 			}
 		}
 		output := []string{
 			"-m", "addrtype",
-			"--dst-type", "LOCAL",
-			"!", "--dst", "127.0.0.0/8"}
-		if !Exists(output...) {
+			"--dst-type", "LOCAL"}
+		if !hairpinMode {
+			output = append(output, "!", "--dst", "127.0.0.0/8")
+		}
+		if !Exists(Nat, "OUTPUT", output...) {
 			if err := c.Output(Append, output...); err != nil {
 				return nil, fmt.Errorf("Failed to inject docker in OUTPUT chain: %s", err)
 			}
 		}
 	case Filter:
-		link := []string{"FORWARD",
+		link := []string{
 			"-o", c.Bridge,
 			"-j", c.Name}
-		if !Exists(link...) {
-			insert := append([]string{string(Insert)}, link...)
+		if !Exists(Filter, "FORWARD", link...) {
+			insert := append([]string{string(Insert), "FORWARD"}, link...)
 			if output, err := Raw(insert...); err != nil {
 				return nil, err
 			} else if len(output) != 0 {
@@ -126,12 +142,11 @@ func (c *Chain) Forward(action Action, ip net.IP, port int, proto, destAddr stri
 		"-p", proto,
 		"-d", daddr,
 		"--dport", strconv.Itoa(port),
-		"!", "-i", c.Bridge,
 		"-j", "DNAT",
 		"--to-destination", net.JoinHostPort(destAddr, strconv.Itoa(destPort))); err != nil {
 		return err
 	} else if len(output) != 0 {
-		return &ChainError{Chain: "FORWARD", Output: output}
+		return ChainError{Chain: "FORWARD", Output: output}
 	}
 
 	if output, err := Raw("-t", string(Filter), string(action), c.Name,
@@ -143,7 +158,7 @@ func (c *Chain) Forward(action Action, ip net.IP, port int, proto, destAddr stri
 		"-j", "ACCEPT"); err != nil {
 		return err
 	} else if len(output) != 0 {
-		return &ChainError{Chain: "FORWARD", Output: output}
+		return ChainError{Chain: "FORWARD", Output: output}
 	}
 
 	if output, err := Raw("-t", string(Nat), string(action), "POSTROUTING",
@@ -154,7 +169,7 @@ func (c *Chain) Forward(action Action, ip net.IP, port int, proto, destAddr stri
 		"-j", "MASQUERADE"); err != nil {
 		return err
 	} else if len(output) != 0 {
-		return &ChainError{Chain: "FORWARD", Output: output}
+		return ChainError{Chain: "FORWARD", Output: output}
 	}
 
 	return nil
@@ -197,7 +212,7 @@ func (c *Chain) Prerouting(action Action, args ...string) error {
 	if output, err := Raw(append(a, "-j", c.Name)...); err != nil {
 		return err
 	} else if len(output) != 0 {
-		return &ChainError{Chain: "PREROUTING", Output: output}
+		return ChainError{Chain: "PREROUTING", Output: output}
 	}
 	return nil
 }
@@ -211,7 +226,7 @@ func (c *Chain) Output(action Action, args ...string) error {
 	if output, err := Raw(append(a, "-j", c.Name)...); err != nil {
 		return err
 	} else if len(output) != 0 {
-		return &ChainError{Chain: "OUTPUT", Output: output}
+		return ChainError{Chain: "OUTPUT", Output: output}
 	}
 	return nil
 }
@@ -232,19 +247,25 @@ func (c *Chain) Remove() error {
 }
 
 // Check if a rule exists
-func Exists(args ...string) bool {
+func Exists(table Table, chain string, rule ...string) bool {
+	if string(table) == "" {
+		table = Filter
+	}
+
 	// iptables -C, --check option was added in v.1.4.11
 	// http://ftp.netfilter.org/pub/iptables/changes-iptables-1.4.11.txt
 
 	// try -C
 	// if exit status is 0 then return true, the rule exists
-	if _, err := Raw(append([]string{"-C"}, args...)...); err == nil {
+	if _, err := Raw(append([]string{
+		"-t", string(table), "-C", chain}, rule...)...); err == nil {
 		return true
 	}
 
-	// parse iptables-save for the rule
-	rule := strings.Replace(strings.Join(args, " "), "-t nat ", "", -1)
-	existingRules, _ := exec.Command("iptables-save").Output()
+	// parse "iptables -S" for the rule (this checks rules in a specific chain
+	// in a specific table)
+	ruleString := strings.Join(rule, " ")
+	existingRules, _ := exec.Command(iptablesPath, "-t", string(table), "-S", chain).Output()
 
 	// regex to replace ips in rule
 	// because MASQUERADE rule will not be exactly what was passed
@@ -252,24 +273,33 @@ func Exists(args ...string) bool {
 
 	return strings.Contains(
 		re.ReplaceAllString(string(existingRules), "?"),
-		re.ReplaceAllString(rule, "?"),
+		re.ReplaceAllString(ruleString, "?"),
 	)
 }
 
 // Call 'iptables' system command, passing supplied arguments
 func Raw(args ...string) ([]byte, error) {
-	path, err := exec.LookPath("iptables")
-	if err != nil {
-		return nil, ErrIptablesNotFound
+	if firewalldRunning {
+		output, err := Passthrough(Iptables, args...)
+		if err == nil || !strings.Contains(err.Error(), "was not provided by any .service files") {
+			return output, err
+		}
+
 	}
 
+	if err := initCheck(); err != nil {
+		return nil, err
+	}
 	if supportsXlock {
 		args = append([]string{"--wait"}, args...)
+	} else {
+		bestEffortLock.Lock()
+		defer bestEffortLock.Unlock()
 	}
 
-	log.Debugf("%s, %v", path, args)
+	logrus.Debugf("%s, %v", iptablesPath, args)
 
-	output, err := exec.Command(path, args...).CombinedOutput()
+	output, err := exec.Command(iptablesPath, args...).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("iptables failed: iptables %v: %s (%s)", strings.Join(args, " "), output, err)
 	}

@@ -21,7 +21,7 @@ func TestWriteLog(t *testing.T) {
 	}
 	w := bytes.NewBuffer(nil)
 	format := timeutils.RFC3339NanoFixed
-	if err := WriteLog(&buf, w, format); err != nil {
+	if err := WriteLog(&buf, w, format, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	res := w.String()
@@ -30,7 +30,8 @@ func TestWriteLog(t *testing.T) {
 	if len(lines) != 30 {
 		t.Fatalf("Must be 30 lines but got %d", len(lines))
 	}
-	logRe := regexp.MustCompile(`\[.*\] Line that thinks that it is log line from docker`)
+	// 30+ symbols, five more can come from system timezone
+	logRe := regexp.MustCompile(`.{30,} Line that thinks that it is log line from docker`)
 	for _, l := range lines {
 		if !logRe.MatchString(l) {
 			t.Fatalf("Log line not in expected format: %q", l)
@@ -51,7 +52,7 @@ func BenchmarkWriteLog(b *testing.B) {
 	b.SetBytes(int64(r.Len()))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := WriteLog(r, w, format); err != nil {
+		if err := WriteLog(r, w, format, time.Time{}); err != nil {
 			b.Fatal(err)
 		}
 		b.StopTimer()

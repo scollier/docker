@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"archive/tar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -8,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-
-	"github.com/docker/docker/vendor/src/code.google.com/p/go/src/pkg/archive/tar"
 
 	"github.com/docker/docker/pkg/pools"
 	"github.com/docker/docker/pkg/system"
@@ -81,7 +80,7 @@ func UnpackLayer(dest string, layer ArchiveReader) (size int64, err error) {
 		if err != nil {
 			return 0, err
 		}
-		if strings.HasPrefix(rel, "..") {
+		if strings.HasPrefix(rel, "../") {
 			return 0, breakoutError(fmt.Errorf("%q is outside of %q", hdr.Name, dest))
 		}
 		base := filepath.Base(path)

@@ -1,8 +1,8 @@
-page_title: The Docker User Guide
-page_description: The Docker User Guide home page
+page_title: The Docker user guide
+page_description: The Docker user guide home page
 page_keywords: docker, introduction, documentation, about, technology, docker.io, user, guide, user's, manual, platform, framework, virtualization, home, intro
 
-# Welcome to the Docker User Guide
+# Welcome to the Docker user guide
 
 In the [Introduction](/) you got a taste of what Docker is and how it
 works. In this guide we're going to take you through the fundamentals of
@@ -19,7 +19,7 @@ We’ll teach you how to use Docker to:
 We've broken this guide into major sections that take you through
 the Docker life cycle:
 
-## Getting Started with Docker Hub
+## Getting started with Docker Hub
 
 *How do I use Docker Hub?*
 
@@ -29,7 +29,7 @@ environment. To learn more:
 
 Go to [Using Docker Hub](/userguide/dockerhub).
 
-## Dockerizing Applications: A "Hello world"
+## Dockerizing applications: A "Hello world"
 
 *How do I run applications inside containers?*
 
@@ -38,7 +38,7 @@ applications. To learn how to Dockerize applications and run them:
 
 Go to [Dockerizing Applications](/userguide/dockerizing).
 
-## Working with Containers
+## Working with containers
 
 *How do I manage my containers?*
 
@@ -48,7 +48,7 @@ about how to inspect, monitor and manage containers:
 
 Go to [Working With Containers](/userguide/usingdocker).
 
-## Working with Docker Images
+## Working with Docker images
 
 *How can I access, share and build my own images?*
 
@@ -57,7 +57,7 @@ learn how to build your own application images with Docker.
 
 Go to [Working with Docker Images](/userguide/dockerimages).
 
-## Linking Containers Together
+## Linking containers together
 
 Until now we've seen how to build individual applications inside Docker
 containers. Now learn how to build whole application stacks with Docker
@@ -65,7 +65,7 @@ by linking together multiple Docker containers.
 
 Go to [Linking Containers Together](/userguide/dockerlinks).
 
-## Managing Data in Containers
+## Managing data in containers
 
 Now we know how to link Docker containers together the next step is
 learning how to manage data, volumes and mounts inside our containers.
@@ -79,6 +79,31 @@ how to combine Docker with the services available on Docker Hub including
 Trusted Builds and private repositories.
 
 Go to [Working with Docker Hub](/userguide/dockerrepos).
+
+## Docker Compose
+
+Docker Compose allows you to define a application's components -- their containers,
+configuration, links and volumes -- in a single file. Then a single command
+will set everything up and start your application running.
+
+Go to [Docker Compose user guide](/compose/).
+
+## Docker Machine
+
+Docker Machine helps you get Docker Engines up and running quickly. Machine
+can set up hosts for Docker Engines on your computer, on cloud providers,
+and/or in your data center, and then configure your Docker client to securely
+talk to them.
+
+Go to [Docker Machine user guide](/machine/).
+
+## Docker Swarm
+
+Docker Swarm pools several Docker Engines together and exposes them as a single
+virtual Docker Engine. It serves the standard Docker API, so any tool that already
+works with Docker can now transparently scale up to multiple hosts.
+
+Go to [Docker Swarm user guide](/swarm/).
 
 ## Getting help
 

@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
-	"github.com/docker/docker/api"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/client"
-	"github.com/docker/docker/dockerversion"
+	"github.com/docker/docker/autogen/dockerversion"
+	"github.com/docker/docker/opts"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/reexec"
-	"github.com/docker/docker/utils"
+	"github.com/docker/docker/pkg/term"
 )
 
 const (
@@ -29,6 +30,11 @@ func main() {
 		return
 	}
 
+	// Set terminal emulation based on platform as required.
+	stdin, stdout, stderr := term.StdStreams()
+
+	initLogging(stderr)
+
 	flag.Parse()
 	// FIXME: validate daemon flags here
 
@@ -38,42 +44,57 @@ func main() {
 	}
 
 	if *flLogLevel != "" {
-		lvl, err := log.ParseLevel(*flLogLevel)
+		lvl, err := logrus.ParseLevel(*flLogLevel)
 		if err != nil {
-			log.Fatalf("Unable to parse logging level: %s", *flLogLevel)
+			fmt.Fprintf(os.Stderr, "Unable to parse logging level: %s\n", *flLogLevel)
+			os.Exit(1)
 		}
-		initLogging(lvl)
+		setLogLevel(lvl)
 	} else {
-		initLogging(log.InfoLevel)
+		setLogLevel(logrus.InfoLevel)
 	}
 
-	// -D, --debug, -l/--log-level=debug processing
-	// When/if -D is removed this block can be deleted
 	if *flDebug {
 		os.Setenv("DEBUG", "1")
-		initLogging(log.DebugLevel)
 	}
 
 	if len(flHosts) == 0 {
 		defaultHost := os.Getenv("DOCKER_HOST")
 		if defaultHost == "" || *flDaemon {
-			// If we do not have a host, default to unix socket
-			defaultHost = fmt.Sprintf("unix://%s", api.DEFAULTUNIXSOCKET)
+			if runtime.GOOS != "windows" {
+				// If we do not have a host, default to unix socket
+				defaultHost = fmt.Sprintf("unix://%s", opts.DefaultUnixSocket)
+			} else {
+				// If we do not have a host, default to TCP socket on Windows
+				defaultHost = fmt.Sprintf("tcp://%s:%d", opts.DefaultHTTPHost, opts.DefaultHTTPPort)
+			}
 		}
-		defaultHost, err := api.ValidateHost(defaultHost)
+		defaultHost, err := opts.ValidateHost(defaultHost)
 		if err != nil {
-			log.Fatal(err)
+			if *flDaemon {
+				logrus.Fatal(err)
+			} else {
+				fmt.Fprint(os.Stderr, err)
+			}
+			os.Exit(1)
 		}
 		flHosts = append(flHosts, defaultHost)
 	}
 
+	setDefaultConfFlag(flTrustKey, defaultTrustKeyFile)
+
 	if *flDaemon {
+		if *flHelp {
+			flag.Usage()
+			return
+		}
 		mainDaemon()
 		return
 	}
 
 	if len(flHosts) > 1 {
-		log.Fatal("Please specify only one -H")
+		fmt.Fprintf(os.Stderr, "Please specify only one -H")
+		os.Exit(0)
 	}
 	protoAddrParts := strings.SplitN(flHosts[0], "://", 2)
 
@@ -94,7 +115,8 @@ func main() {
 		certPool := x509.NewCertPool()
 		file, err := ioutil.ReadFile(*flCa)
 		if err != nil {
-			log.Fatalf("Couldn't read ca cert %s: %s", *flCa, err)
+			fmt.Fprintf(os.Stderr, "Couldn't read ca cert %s: %s\n", *flCa, err)
+			os.Exit(1)
 		}
 		certPool.AppendCertsFromPEM(file)
 		tlsConfig.RootCAs = certPool
@@ -109,7 +131,8 @@ func main() {
 			*flTls = true
 			cert, err := tls.LoadX509KeyPair(*flCert, *flKey)
 			if err != nil {
-				log.Fatalf("Couldn't load X509 key pair: %s. Key encrypted?", err)
+				fmt.Fprintf(os.Stderr, "Couldn't load X509 key pair: %q. Make sure the key is encrypted\n", err)
+				os.Exit(1)
 			}
 			tlsConfig.Certificates = []tls.Certificate{cert}
 		}
@@ -118,19 +141,21 @@ func main() {
 	}
 
 	if *flTls || *flTlsVerify {
-		cli = client.NewDockerCli(os.Stdin, os.Stdout, os.Stderr, nil, protoAddrParts[0], protoAddrParts[1], &tlsConfig)
+		cli = client.NewDockerCli(stdin, stdout, stderr, *flTrustKey, protoAddrParts[0], protoAddrParts[1], &tlsConfig)
 	} else {
-		cli = client.NewDockerCli(os.Stdin, os.Stdout, os.Stderr, nil, protoAddrParts[0], protoAddrParts[1], nil)
+		cli = client.NewDockerCli(stdin, stdout, stderr, *flTrustKey, protoAddrParts[0], protoAddrParts[1], nil)
 	}
 
 	if err := cli.Cmd(flag.Args()...); err != nil {
-		if sterr, ok := err.(*utils.StatusError); ok {
+		if sterr, ok := err.(client.StatusError); ok {
 			if sterr.Status != "" {
-				log.Println(sterr.Status)
+				fmt.Fprintln(cli.Err(), sterr.Status)
+				os.Exit(1)
 			}
 			os.Exit(sterr.StatusCode)
 		}
-		log.Fatal(err)
+		fmt.Fprintln(cli.Err(), err)
+		os.Exit(1)
 	}
 }
 

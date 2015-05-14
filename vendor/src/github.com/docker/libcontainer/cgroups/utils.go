@@ -34,6 +34,21 @@ func FindCgroupMountpoint(subsystem string) (string, error) {
 	return "", NewNotFoundError(subsystem)
 }
 
+func FindCgroupMountpointDir() (string, error) {
+	mounts, err := mount.GetMounts()
+	if err != nil {
+		return "", err
+	}
+
+	for _, mount := range mounts {
+		if mount.Fstype == "cgroup" {
+			return filepath.Dir(mount.Mountpoint), nil
+		}
+	}
+
+	return "", NewNotFoundError("cgroup")
+}
+
 type Mount struct {
 	Mountpoint string
 	Subsystems []string
@@ -174,7 +189,7 @@ func ParseCgroupFile(subsystem string, r io.Reader) (string, error) {
 	return "", NewNotFoundError(subsystem)
 }
 
-func pathExists(path string) bool {
+func PathExists(path string) bool {
 	if _, err := os.Stat(path); err != nil {
 		return false
 	}
@@ -183,7 +198,7 @@ func pathExists(path string) bool {
 
 func EnterPid(cgroupPaths map[string]string, pid int) error {
 	for _, path := range cgroupPaths {
-		if pathExists(path) {
+		if PathExists(path) {
 			if err := ioutil.WriteFile(filepath.Join(path, "cgroup.procs"),
 				[]byte(strconv.Itoa(pid)), 0700); err != nil {
 				return err

@@ -1,4 +1,4 @@
-page_title: Best Practices for Writing Dockerfiles
+page_title: Best practices for writing Dockerfiles
 page_description: Hints, tips and guidelines for writing clean, reliable Dockerfiles
 page_keywords: Examples, Usage, base image, docker, documentation, dockerfile, best practices, hub, official repo
 
@@ -32,13 +32,14 @@ ephemeral as possible. By “ephemeral,” we mean that it can be stopped and
 destroyed and a new one built and put in place with an absolute minimum of
 set-up and configuration.
 
-### Use [a .dockerignore file](https://docs.docker.com/reference/builder/#the-dockerignore-file)
+### Use a .dockerignore file
 
-For faster uploading and efficiency during `docker build`, you should use
-a `.dockerignore` file to exclude files or directories from the build
-context and final image. For example, unless`.git` is needed by your build
-process or scripts, you should add it to `.dockerignore`, which can save many
-megabytes worth of upload time.
+In most cases, it's best to put each Dockerfile in an empty directory. Then,
+add to that directory only the files needed for building the Dockerfile. To
+increase the build's performance, you can exclude files and directories by
+adding a `.dockerignore` file to that directory as well. This file supports 
+exclusion patterns similar to `.gitignore` files. For information on creating one,
+see the [.dockerignore file](../../reference/builder/#dockerignore-file).
 
 ### Avoid installing unnecessary packages
 
@@ -65,7 +66,7 @@ uses. Be strategic and cautious about the number of layers you use.
 Whenever possible, ease later changes by sorting multi-line arguments
 alphanumerically. This will help you avoid duplication of packages and make the
 list much easier to update. This also makes PRs a lot easier to read and
-review. Adding a space before a backslash (`\`) helps as well. 
+review. Adding a space before a backslash (`\`) helps as well.
 
 Here’s an example from the [`buildpack-deps` image](https://github.com/docker-library/buildpack-deps):
 
@@ -291,32 +292,32 @@ auto-extraction capability, you should always use `COPY`.
 
 ### [`ENTRYPOINT`](https://docs.docker.com/reference/builder/#entrypoint)
 
-The best use for `ENTRYPOINT` is as a helper script. Using `ENTRYPOINT` for
-other tasks can make your code harder to understand. For example,
+The best use for `ENTRYPOINT` is to set the image's main command, allowing that
+image to be run as though it was that command (and then use `CMD` as the
+default flags).
 
-....docker run -it official-image bash
+Let's start with an example of an image for the command line tool `s3cmd`:
 
-is much easier to understand than
+    ENTRYPOINT ["s3cmd"]
+    CMD ["--help"]
 
-....docker run -it --entrypoint bash official-image -i
+Now the image can be run like this to show the command's help:
 
-This is especially true for new Docker users, who might naturally assume the
-above command will work fine. In cases where an image uses `ENTRYPOINT` for
-anything other than just a wrapper script, the command will fail and the
-beginning user will then be forced to learn about `ENTRYPOINT` and
-`--entrypoint`.
+    $ docker run s3cmd
 
-In order to avoid a situation where commands are run without clear visibility
-to the user, make sure your script ends with something like `exec "$@"` (see
-[the exec builtin command](http://wiki.bash-hackers.org/commands/builtin/exec)).
-After the entrypoint completes, the script will transparently bootstrap the command
-invoked by the user, making what has been run clear to the user (for example,
-`docker run -it mysql mysqld --some --flags` will transparently run
-`mysqld --some --flags` after `ENTRYPOINT` runs `initdb`).
+Or using the right parameters to execute a command:
 
-For example, let’s look at the `Dockerfile` for the
-[Postgres Official Image](https://github.com/docker-library/postgres).
-It refers to the following script: 
+    $ docker run s3cmd ls s3://mybucket
+
+This is useful because the image name can double as a reference to the binary as
+shown in the command above.
+
+The `ENTRYPOINT` instruction can also be used in combination with a helper
+script, allowing it to function in a similar way to the command above, even
+when starting the tool may require more than one step.
+
+For example, the [Postgres Official Image](https://registry.hub.docker.com/_/postgres/)
+uses the following script as its `ENTRYPOINT`:
 
 ```bash
 #!/bin/bash
@@ -335,11 +336,33 @@ fi
 exec "$@"
 ```
 
-That script then gets copied into the container and run via `ENTRYPOINT` on
-container startup:
+> **Note**:
+> This script uses [the `exec` Bash command](http://wiki.bash-hackers.org/commands/builtin/exec)
+> so that the final running application becomes the container's PID 1. This allows
+> the application to receive any Unix signals sent to the container.
+> See the [`ENTRYPOINT`](https://docs.docker.com/reference/builder/#ENTRYPOINT)
+> help for more details.
+
+
+The helper script is copied into the container and run via `ENTRYPOINT` on
+container start:
 
     COPY ./docker-entrypoint.sh /
     ENTRYPOINT ["/docker-entrypoint.sh"]
+
+This script allows the user to interact with Postgres in several ways.
+
+It can simply start Postgres:
+
+    $ docker run postgres
+
+Or, it can be used to run Postgres and pass parameters to the server:
+
+    $ docker run postgres postgres --help
+
+Lastly, it could also be used to start a totally different tool, such Bash:
+
+    $ docker run --rm -it postgres bash
 
 ### [`VOLUME`](https://docs.docker.com/reference/builder/#volume)
 
@@ -359,7 +382,7 @@ like `RUN groupadd -r postgres && useradd -r -g postgres postgres`.
 > rebuilds. So, if it’s critical, you should assign an explicit UID/GID.
 
 You should avoid installing or using `sudo` since it has unpredictable TTY and
-signal-forwarding behavior that can cause more more problems than it solves. If
+signal-forwarding behavior that can cause more problems than it solves. If
 you absolutely need functionality similar to `sudo` (e.g., initializing the
 daemon as root but running it as non-root), you may be able to use
 [“gosu”](https://github.com/tianon/gosu). 
@@ -376,7 +399,15 @@ troubleshoot, and maintain.
 
 ### [`ONBUILD`](https://docs.docker.com/reference/builder/#onbuild)
 
-`ONBUILD` is only useful for images that are going to be built `FROM` a given
+An `ONBUILD` command executes after the current `Dockerfile` build completes.
+`ONBUILD` executes in any child image derived `FROM` the current image.  Think
+of the `ONBUILD` command as an instruction the parent `Dockerfile` gives
+to the child `Dockerfile`.
+
+A Docker build executes `ONBUILD` commands before any command in a child
+`Dockerfile`.
+
+`ONBUILD` is useful for images that are going to be built `FROM` a given
 image. For example, you would use `ONBUILD` for a language stack image that
 builds arbitrary user software written in that language within the
 `Dockerfile`, as you can see in [Ruby’s `ONBUILD` variants](https://github.com/docker-library/ruby/blob/master/2.1/onbuild/Dockerfile). 
@@ -389,16 +420,16 @@ fail catastrophically if the new build's context is missing the resource being
 added. Adding a separate tag, as recommended above, will help mitigate this by
 allowing the `Dockerfile` author to make a choice.
 
-## Examples For Official Repositories
+## Examples for Official Repositories
 
-These Official Repos have exemplary `Dockerfile`s:
+These Official Repositories have exemplary `Dockerfile`s:
 
 * [Go](https://registry.hub.docker.com/_/golang/)
 * [Perl](https://registry.hub.docker.com/_/perl/)
 * [Hy](https://registry.hub.docker.com/_/hylang/)
 * [Rails](https://registry.hub.docker.com/_/rails)
 
-## Additional Resources:
+## Additional resources:
 
 * [Dockerfile Reference](https://docs.docker.com/reference/builder/#onbuild)
 * [More about Base Images](https://docs.docker.com/articles/baseimages/)

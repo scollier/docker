@@ -12,7 +12,7 @@ import (
 	"sync"
 	"syscall"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/graphdriver"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/chrootarchive"
@@ -90,27 +90,36 @@ type Driver struct {
 	active     map[string]*ActiveMount
 }
 
+var backingFs = "<unknown>"
+
 func init() {
 	graphdriver.Register("overlay", Init)
 }
 
 func Init(home string, options []string) (graphdriver.Driver, error) {
+
 	if err := supportsOverlay(); err != nil {
 		return nil, graphdriver.ErrNotSupported
 	}
 
-	// check if they are running over btrfs
-	var buf syscall.Statfs_t
-	if err := syscall.Statfs(path.Dir(home), &buf); err != nil {
+	fsMagic, err := graphdriver.GetFSMagic(home)
+	if err != nil {
 		return nil, err
 	}
+	if fsName, ok := graphdriver.FsNames[fsMagic]; ok {
+		backingFs = fsName
+	}
 
-	switch graphdriver.FsMagic(buf.Type) {
+	// check if they are running over btrfs or aufs
+	switch fsMagic {
 	case graphdriver.FsMagicBtrfs:
-		log.Error("'overlay' is not supported over btrfs.")
+		logrus.Error("'overlay' is not supported over btrfs.")
 		return nil, graphdriver.ErrIncompatibleFS
 	case graphdriver.FsMagicAufs:
-		log.Error("'overlay' is not supported over aufs.")
+		logrus.Error("'overlay' is not supported over aufs.")
+		return nil, graphdriver.ErrIncompatibleFS
+	case graphdriver.FsMagicZfs:
+		logrus.Error("'overlay' is not supported over zfs.")
 		return nil, graphdriver.ErrIncompatibleFS
 	}
 
@@ -144,7 +153,7 @@ func supportsOverlay() error {
 			return nil
 		}
 	}
-	log.Error("'overlay' not found as a supported filesystem on this host. Please ensure kernel is new enough and has overlay support loaded.")
+	logrus.Error("'overlay' not found as a supported filesystem on this host. Please ensure kernel is new enough and has overlay support loaded.")
 	return graphdriver.ErrNotSupported
 }
 
@@ -153,7 +162,9 @@ func (d *Driver) String() string {
 }
 
 func (d *Driver) Status() [][2]string {
-	return nil
+	return [][2]string{
+		{"Backing Filesystem", backingFs},
+	}
 }
 
 func (d *Driver) Cleanup() error {
@@ -262,9 +273,9 @@ func (d *Driver) Get(id string, mountLabel string) (string, error) {
 	if mount != nil {
 		mount.count++
 		return mount.path, nil
-	} else {
-		mount = &ActiveMount{count: 1}
 	}
+
+	mount = &ActiveMount{count: 1}
 
 	dir := d.dir(id)
 	if _, err := os.Stat(dir); err != nil {
@@ -290,7 +301,7 @@ func (d *Driver) Get(id string, mountLabel string) (string, error) {
 
 	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", lowerDir, upperDir, workDir)
 	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, label.FormatMountLabel(opts, mountLabel)); err != nil {
-		return "", err
+		return "", fmt.Errorf("error creating overlay mount to %s: %v", mergedDir, err)
 	}
 	mount.path = mergedDir
 	mount.mounted = true
@@ -299,29 +310,31 @@ func (d *Driver) Get(id string, mountLabel string) (string, error) {
 	return mount.path, nil
 }
 
-func (d *Driver) Put(id string) {
+func (d *Driver) Put(id string) error {
 	// Protect the d.active from concurrent access
 	d.Lock()
 	defer d.Unlock()
 
 	mount := d.active[id]
 	if mount == nil {
-		log.Debugf("Put on a non-mounted device %s", id)
-		return
+		logrus.Debugf("Put on a non-mounted device %s", id)
+		return nil
 	}
 
 	mount.count--
 	if mount.count > 0 {
-		return
+		return nil
 	}
 
+	defer delete(d.active, id)
 	if mount.mounted {
-		if err := syscall.Unmount(mount.path, 0); err != nil {
-			log.Debugf("Failed to unmount %s overlay: %v", id, err)
+		err := syscall.Unmount(mount.path, 0)
+		if err != nil {
+			logrus.Debugf("Failed to unmount %s overlay: %v", id, err)
 		}
+		return err
 	}
-
-	delete(d.active, id)
+	return nil
 }
 
 func (d *Driver) ApplyDiff(id string, parent string, diff archive.ArchiveReader) (size int64, err error) {

@@ -2,14 +2,10 @@ package volumes
 
 import (
 	"encoding/json"
-	"io"
-	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 
-	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/symlink"
 )
 
@@ -22,35 +18,6 @@ type Volume struct {
 	configPath  string
 	repository  *Repository
 	lock        sync.Mutex
-}
-
-func (v *Volume) Export(resource, name string) (io.ReadCloser, error) {
-	if v.IsBindMount && filepath.Base(resource) == name {
-		name = ""
-	}
-
-	basePath, err := v.getResourcePath(resource)
-	if err != nil {
-		return nil, err
-	}
-	stat, err := os.Stat(basePath)
-	if err != nil {
-		return nil, err
-	}
-	var filter []string
-	if !stat.IsDir() {
-		d, f := path.Split(basePath)
-		basePath = d
-		filter = []string{f}
-	} else {
-		filter = []string{path.Base(basePath)}
-		basePath = path.Dir(basePath)
-	}
-	return archive.TarWithOptions(basePath, &archive.TarOptions{
-		Compression:  archive.Uncompressed,
-		Name:         name,
-		IncludeFiles: filter,
-	})
 }
 
 func (v *Volume) IsDir() (bool, error) {
@@ -86,44 +53,22 @@ func (v *Volume) AddContainer(containerId string) {
 	v.lock.Unlock()
 }
 
-func (v *Volume) createIfNotExist() error {
-	if stat, err := os.Stat(v.Path); err != nil && os.IsNotExist(err) {
-		if stat.IsDir() {
-			os.MkdirAll(v.Path, 0755)
-		}
-
-		if err := os.MkdirAll(filepath.Dir(v.Path), 0755); err != nil {
-			return err
-		}
-		f, err := os.OpenFile(v.Path, os.O_CREATE, 0755)
-		if err != nil {
-			return err
-		}
-		f.Close()
-	}
-	return nil
-}
-
 func (v *Volume) initialize() error {
 	v.lock.Lock()
 	defer v.lock.Unlock()
 
-	if err := v.createIfNotExist(); err != nil {
-		return err
+	if _, err := os.Stat(v.Path); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.MkdirAll(v.Path, 0755); err != nil {
+			return err
+		}
 	}
 
 	if err := os.MkdirAll(v.configPath, 0755); err != nil {
 		return err
 	}
-	jsonPath, err := v.jsonPath()
-	if err != nil {
-		return err
-	}
-	f, err := os.Create(jsonPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 
 	return v.toDisk()
 }
@@ -133,19 +78,23 @@ func (v *Volume) ToDisk() error {
 	defer v.lock.Unlock()
 	return v.toDisk()
 }
+
 func (v *Volume) toDisk() error {
-	data, err := json.Marshal(v)
+	jsonPath, err := v.jsonPath()
 	if err != nil {
 		return err
 	}
-
-	pth, err := v.jsonPath()
+	f, err := os.OpenFile(jsonPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
-
-	return ioutil.WriteFile(pth, data, 0666)
+	if err := json.NewEncoder(f).Encode(v); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
+
 func (v *Volume) FromDisk() error {
 	v.lock.Lock()
 	defer v.lock.Unlock()
@@ -166,14 +115,38 @@ func (v *Volume) FromDisk() error {
 }
 
 func (v *Volume) jsonPath() (string, error) {
-	return v.getRootResourcePath("config.json")
-}
-func (v *Volume) getRootResourcePath(path string) (string, error) {
-	cleanPath := filepath.Join("/", path)
-	return symlink.FollowSymlinkInScope(filepath.Join(v.configPath, cleanPath), v.configPath)
+	return v.GetRootResourcePath("config.json")
 }
 
-func (v *Volume) getResourcePath(path string) (string, error) {
+// Evalutes `path` in the scope of the volume's root path, with proper path
+// sanitisation. Symlinks are all scoped to the root of the volume, as
+// though the volume's root was `/`.
+//
+// The volume's root path is the host-facing path of the root of the volume's
+// mountpoint inside a container.
+//
+// NOTE: The returned path is *only* safely scoped inside the volume's root
+//       if no component of the returned path changes (such as a component
+//       symlinking to a different path) between using this method and using the
+//       path. See symlink.FollowSymlinkInScope for more details.
+func (v *Volume) GetResourcePath(path string) (string, error) {
 	cleanPath := filepath.Join("/", path)
 	return symlink.FollowSymlinkInScope(filepath.Join(v.Path, cleanPath), v.Path)
+}
+
+// Evalutes `path` in the scope of the volume's config path, with proper path
+// sanitisation. Symlinks are all scoped to the root of the config path, as
+// though the config path was `/`.
+//
+// The config path of a volume is not exposed to the container and is just used
+// to store volume configuration options and other internal information. If in
+// doubt, you probably want to just use v.GetResourcePath.
+//
+// NOTE: The returned path is *only* safely scoped inside the volume's config
+//       path if no component of the returned path changes (such as a component
+//       symlinking to a different path) between using this method and using the
+//       path. See symlink.FollowSymlinkInScope for more details.
+func (v *Volume) GetRootResourcePath(path string) (string, error) {
+	cleanPath := filepath.Join("/", path)
+	return symlink.FollowSymlinkInScope(filepath.Join(v.configPath, cleanPath), v.configPath)
 }

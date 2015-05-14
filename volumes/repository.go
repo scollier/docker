@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/graphdriver"
-	"github.com/docker/docker/utils"
+	"github.com/docker/docker/pkg/stringid"
 )
 
 type Repository struct {
@@ -43,7 +43,7 @@ func (r *Repository) newVolume(path string, writable bool) (*Volume, error) {
 	var (
 		isBindMount bool
 		err         error
-		id          = utils.GenerateRandomID()
+		id          = stringid.GenerateRandomID()
 	)
 	if path != "" {
 		isBindMount = true
@@ -57,9 +57,10 @@ func (r *Repository) newVolume(path string, writable bool) (*Volume, error) {
 	}
 	path = filepath.Clean(path)
 
-	path, err = filepath.EvalSymlinks(path)
-	if err != nil {
-		return nil, err
+	// Ignore the error here since the path may not exist
+	// Really just want to make sure the path we are using is real(or nonexistent)
+	if cleanPath, err := filepath.EvalSymlinks(path); err == nil {
+		path = cleanPath
 	}
 
 	v := &Volume{
@@ -76,7 +77,8 @@ func (r *Repository) newVolume(path string, writable bool) (*Volume, error) {
 		return nil, err
 	}
 
-	return v, r.add(v)
+	r.add(v)
+	return v, nil
 }
 
 func (r *Repository) restore() error {
@@ -87,30 +89,22 @@ func (r *Repository) restore() error {
 
 	for _, v := range dir {
 		id := v.Name()
-		path, err := r.driver.Get(id, "")
-		if err != nil {
-			log.Debugf("Could not find volume for %s: %v", id, err)
-			continue
-		}
 		vol := &Volume{
 			ID:         id,
 			configPath: r.configPath + "/" + id,
 			containers: make(map[string]struct{}),
-			Path:       path,
 		}
 		if err := vol.FromDisk(); err != nil {
 			if !os.IsNotExist(err) {
-				log.Debugf("Error restoring volume: %v", err)
+				logrus.Debugf("Error restoring volume: %v", err)
 				continue
 			}
 			if err := vol.initialize(); err != nil {
-				log.Debugf("%s", err)
+				logrus.Debugf("%s", err)
 				continue
 			}
 		}
-		if err := r.add(vol); err != nil {
-			log.Debugf("Error restoring volume: %v", err)
-		}
+		r.add(vol)
 	}
 	return nil
 }
@@ -130,28 +124,11 @@ func (r *Repository) get(path string) *Volume {
 	return r.volumes[filepath.Clean(path)]
 }
 
-func (r *Repository) Add(volume *Volume) error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	return r.add(volume)
-}
-
-func (r *Repository) add(volume *Volume) error {
+func (r *Repository) add(volume *Volume) {
 	if vol := r.get(volume.Path); vol != nil {
-		return fmt.Errorf("Volume exists: %s", volume.ID)
+		return
 	}
 	r.volumes[volume.Path] = volume
-	return nil
-}
-
-func (r *Repository) Remove(volume *Volume) {
-	r.lock.Lock()
-	r.remove(volume)
-	r.lock.Unlock()
-}
-
-func (r *Repository) remove(volume *Volume) {
-	delete(r.volumes, volume.Path)
 }
 
 func (r *Repository) Delete(path string) error {
@@ -175,17 +152,15 @@ func (r *Repository) Delete(path string) error {
 		return err
 	}
 
-	if volume.IsBindMount {
-		return nil
-	}
-
-	if err := r.driver.Remove(volume.ID); err != nil {
-		if !os.IsNotExist(err) {
-			return err
+	if !volume.IsBindMount {
+		if err := r.driver.Remove(volume.ID); err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
 		}
 	}
 
-	r.remove(volume)
+	delete(r.volumes, volume.Path)
 	return nil
 }
 

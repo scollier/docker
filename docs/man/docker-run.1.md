@@ -8,12 +8,16 @@ docker-run - Run a command in a new container
 **docker run**
 [**-a**|**--attach**[=*[]*]]
 [**--add-host**[=*[]*]]
+[**--blkio-weight**[=*[BLKIO-WEIGHT]*]]
 [**-c**|**--cpu-shares**[=*0*]]
 [**--cap-add**[=*[]*]]
 [**--cap-drop**[=*[]*]]
 [**--cidfile**[=*CIDFILE*]]
-[**--cpuset**[=*CPUSET*]]
+[**--cpu-period**[=*0*]]
+[**--cpuset-cpus**[=*CPUSET-CPUS*]]
+[**--cpuset-mems**[=*CPUSET-MEMS*]]
 [**-d**|**--detach**[=*false*]]
+[**--cpu-quota**[=*0*]]
 [**--device**[=*[]*]]
 [**--dns-search**[=*[]*]]
 [**--dns**[=*[]*]]
@@ -25,15 +29,22 @@ docker-run - Run a command in a new container
 [**--help**]
 [**-i**|**--interactive**[=*false*]]
 [**--ipc**[=*IPC*]]
+[**-l**|**--label**[=*[]*]]
+[**--label-file**[=*[]*]]
 [**--link**[=*[]*]]
 [**--lxc-conf**[=*[]*]]
+[**--log-driver**[=*[]*]]
 [**-m**|**--memory**[=*MEMORY*]]
+[**--memory-swap**[=*MEMORY-SWAP*]]
 [**--mac-address**[=*MAC-ADDRESS*]]
 [**--name**[=*NAME*]]
 [**--net**[=*"bridge"*]]
+[**--oom-kill-disable**[=*false*]]
 [**-P**|**--publish-all**[=*false*]]
 [**-p**|**--publish**[=*[]*]]
+[**--pid**[=*[]*]]
 [**--privileged**[=*false*]]
+[**--read-only**[=*false*]]
 [**--restart**[=*RESTART*]]
 [**--rm**[=*false*]]
 [**--security-opt**[=*[]*]]
@@ -43,6 +54,7 @@ docker-run - Run a command in a new container
 [**-v**|**--volume**[=*[]*]]
 [**--volumes-from**[=*[]*]]
 [**-w**|**--workdir**[=*WORKDIR*]]
+[**--cgroup-parent**[=*CGROUP-PATH*]]
 IMAGE [COMMAND] [ARG...]
 
 # DESCRIPTION
@@ -76,14 +88,44 @@ each of stdin, stdout, and stderr.
    Add a line to /etc/hosts. The format is hostname:ip.  The **--add-host**
 option can be set multiple times.
 
+**--blkio-weight**=0
+   Block IO weight (relative weight) accepts a weight value between 10 and 1000.
+
 **-c**, **--cpu-shares**=0
    CPU shares (relative weight)
 
-   You can increase the priority of a container
-with the -c option. By default, all containers run at the same priority and get
-the same proportion of CPU cycles, but you can tell the kernel to give more
-shares of CPU time to one or more containers when you start them via **docker
-run**.
+   By default, all containers get the same proportion of CPU cycles. This proportion
+can be modified by changing the container's CPU share weighting relative
+to the weighting of all other running containers.
+
+To modify the proportion from the default of 1024, use the **-c** or **--cpu-shares**
+flag to set the weighting to 2 or higher.
+
+The proportion will only apply when CPU-intensive processes are running.
+When tasks in one container are idle, other containers can use the
+left-over CPU time. The actual amount of CPU time will vary depending on
+the number of containers running on the system.
+
+For example, consider three containers, one has a cpu-share of 1024 and
+two others have a cpu-share setting of 512. When processes in all three
+containers attempt to use 100% of CPU, the first container would receive
+50% of the total CPU time. If you add a fourth container with a cpu-share
+of 1024, the first container only gets 33% of the CPU. The remaining containers
+receive 16.5%, 16.5% and 33% of the CPU.
+
+On a multi-core system, the shares of CPU time are distributed over all CPU
+cores. Even if a container is limited to less than 100% of CPU time, it can
+use 100% of each individual CPU core.
+
+For example, consider a system with more than three cores. If you start one
+container **{C0}** with **-c=512** running one process, and another container
+**{C1}** with **-c=1024** running two processes, this can result in the following
+division of CPU shares:
+
+    PID    container	CPU	CPU share
+    100    {C0}		0	100% of CPU0
+    101    {C1}		1	100% of CPU1
+    102    {C1}		2	100% of CPU2
 
 **--cap-add**=[]
    Add Linux capabilities
@@ -91,11 +133,33 @@ run**.
 **--cap-drop**=[]
    Drop Linux capabilities
 
+**--cgroup-parent**=""
+   Path to cgroups under which the cgroup for the container will be created. If the path is not absolute, the path is considered to be relative to the cgroups path of the init process. Cgroups will be created if they do not already exist.
+
 **--cidfile**=""
    Write the container ID to the file
 
-**--cpuset**=""
+**--cpu-period**=0
+   Limit the CPU CFS (Completely Fair Scheduler) period
+
+   Limit the container's CPU usage. This flag tell the kernel to restrict the container's CPU usage to the period you specify.
+
+**--cpuset-cpus**=""
    CPUs in which to allow execution (0-3, 0,1)
+
+**--cpuset-mems**=""
+   Memory nodes (MEMs) in which to allow execution (0-3, 0,1). Only effective on NUMA systems.
+
+   If you have four memory nodes on your system (0-3), use `--cpuset-mems=0,1`
+then processes in your Docker container will only use memory from the first
+two memory nodes.
+
+**--cpu-quota**=0
+   Limit the CPU CFS (Completely Fair Scheduler) quota
+
+   Limit the container's CPU usage. By default, containers run with the full
+CPU resource. This flag tell the kernel to restrict the container's CPU usage
+to the quota you specify.
 
 **-d**, **--detach**=*true*|*false*
    Detached mode: run the container in the background and print the new container ID. The default is *false*.
@@ -167,8 +231,15 @@ ENTRYPOINT.
                                'container:<name|id>': reuses another container shared memory, semaphores and message queues
                                'host': use the host shared memory,semaphores and message queues inside the container.  Note: the host mode gives the container full access to local shared memory and is therefore considered insecure.
 
+**-l**, **--label**=[]
+   Set metadata on the container (e.g., --label com.example.key=value)
+
+**--label-file**=[]
+   Read in a line delimited file of labels
+
 **--link**=[]
-   Add link to another container in the form of name:alias
+   Add link to another container in the form of <name or id>:alias or just <name or id>
+in which case the alias will match the name
 
    If the operator
 uses **--link** when starting the new client container, then the client
@@ -179,15 +250,24 @@ which interface and port to use.
 **--lxc-conf**=[]
    (lxc exec-driver only) Add custom lxc options --lxc-conf="lxc.cgroup.cpuset.cpus = 0,1"
 
+**--log-driver**="|*json-file*|*syslog*|*journald*|*none*"
+  Logging driver for container. Default is defined by daemon `--log-driver` flag.
+  **Warning**: `docker logs` command works only for `json-file` logging driver.
+
 **-m**, **--memory**=""
    Memory limit (format: <number><optional unit>, where unit = b, k, m or g)
 
    Allows you to constrain the memory available to a container. If the host
-supports swap memory, then the -m memory setting can be larger than physical
-RAM. If a limit of 0 is specified, the container's memory is not limited. The
-actual limit may be rounded up to a multiple of the operating system's page
-size, if it is not already. The memory limit should be formatted as follows:
-`<number><optional unit>`, where unit = b, k, m or g.
+supports swap memory, then the **-m** memory setting can be larger than physical
+RAM. If a limit of 0 is specified (not using **-m**), the container's memory is
+not limited. The actual limit may be rounded up to a multiple of the operating
+system's page size (the value would be very large, that's millions of trillions).
+
+**--memory-swap**=""
+   Total memory limit (memory + swap)
+
+   Set `-1` to disable swap (format: <number><optional unit>, where unit = b, k, m or g).
+This value should always larger than **-m**, so you should always use this with **-m**.
 
 **--mac-address**=""
    Container MAC address (e.g. 92:d0:c6:0a:29:33)
@@ -217,15 +297,19 @@ and foreground Docker containers.
                                'container:<name|id>': reuses another container network stack
                                'host': use the host network stack inside the container.  Note: the host mode gives the container full access to local system services such as D-bus and is therefore considered insecure.
 
+**--oom-kill-disable**=*true*|*false*
+   Whether to disable OOM Killer for the container or not.
+
 **-P**, **--publish-all**=*true*|*false*
    Publish all exposed ports to random ports on the host interfaces. The default is *false*.
 
    When set to true publish all exposed ports to the host interfaces. The
 default is false. If the operator uses -P (or -p) then Docker will make the
 exposed port accessible on the host and the ports will be available to any
-client that can reach the host. When using -P, Docker will bind the exposed
-ports to a random port on the host between 49153 and 65535. To find the
-mapping between the host ports and the exposed ports, use **docker port**.
+client that can reach the host. When using -P, Docker will bind any exposed
+port to a random port on the host within an *ephemeral port range* defined by
+`/proc/sys/net/ipv4/ip_local_port_range`. To find the mapping between the host
+ports and the exposed ports, use `docker port`.
 
 **-p**, **--publish**=[]
    Publish a container's port, or range of ports, to the host.
@@ -233,6 +317,11 @@ mapping between the host ports and the exposed ports, use **docker port**.
                                Both hostPort and containerPort can be specified as a range of ports. 
                                When specifying ranges for both, the number of container ports in the range must match the number of host ports in the range. (e.g., `-p 1234-1236:1234-1236/tcp`)
                                (use 'docker port' to see the actual mapping)
+
+**--pid**=host
+   Set the PID mode for the container
+     **host**: use the host's PID namespace inside the container.
+     Note: the host mode gives the container full access to local PID and is therefore considered insecure.
 
 **--privileged**=*true*|*false*
    Give extended privileges to this container. The default is *false*.
@@ -247,9 +336,16 @@ to all devices on the host as well as set some configuration in AppArmor to
 allow the container nearly all the same access to the host as processes running
 outside of a container on the host.
 
-**--restart**=""
-   Restart policy to apply when a container exits (no, on-failure[:max-retry], always)
+**--read-only**=*true*|*false*
+   Mount the container's root filesystem as read only.
 
+   By default a container will have its root filesystem writable allowing processes
+to write files anywhere.  By specifying the `--read-only` flag the container will have
+its root filesystem mounted as read only prohibiting any writes.
+
+**--restart**="no"
+   Restart policy to apply when a container exits (no, on-failure[:max-retry], always)
+      
 **--rm**=*true*|*false*
    Automatically remove the container when it exits (incompatible with -d). The default is *false*.
 
@@ -276,7 +372,12 @@ The **-t** option is incompatible with a redirection of the docker client
 standard input.
 
 **-u**, **--user**=""
-   Username or UID
+   Sets the username or UID used and optionally the groupname or GID for the specified command.
+
+   The followings examples are all valid:
+   --user [user | user:group | uid | uid:gid | user:gid | uid:group ]
+
+   Without this argument the command will be run as root in the container.
 
 **-v**, **--volume**=[]
    Bind mount a volume (e.g., from the host: -v /host:/container, from Docker: -v /container)
@@ -292,16 +393,20 @@ read-write. See examples.
 **--volumes-from**=[]
    Mount volumes from the specified container(s)
 
-   Will mount volumes from the specified container identified by container-id.
-Once a volume is mounted in a one container it can be shared with other
-containers using the **--volumes-from** option when running those other
-containers. The volumes can be shared even if the original container with the
-mount is not running.
+   Mounts already mounted volumes from a source container onto another
+   container. You must supply the source's container-id. To share 
+   a volume, use the **--volumes-from** option when running
+   the target container. You can share volumes even if the source container 
+   is not running.
 
-   The container ID may be optionally suffixed with :ro or
-:rw to mount the volumes in read-only or read-write mode, respectively. By
-default, the volumes are mounted in the same mode (read write or read only) as
-the reference container.
+   By default, Docker mounts the volumes in the same mode (read-write or 
+   read-only) as it is mounted in the source container. Optionally, you 
+   can change this by suffixing the container-id with either the `:ro` or 
+   `:rw ` keyword.
+
+   If the location of the volume from the source container overlaps with
+   data residing on a target container, then the volume hides
+   that data on the target.
 
 **-w**, **--workdir**=""
    Working directory inside the container
@@ -342,7 +447,7 @@ you’d like to connect instead, as in:
 
 ## Sharing IPC between containers
 
-Using shm_server.c available here: http://www.cs.cf.ac.uk/Dave/C/node27.html
+Using shm_server.c available here: https://www.cs.cf.ac.uk/Dave/C/node27.html
 
 Testing `--ipc=host` mode:
 
@@ -359,7 +464,7 @@ Host shows a shared memory segment with 7 pids attached, happens to be from http
 Now run a regular container, and it correctly does NOT see the shared memory segment from the host:
 
 ```
- $ sudo docker run -it shm ipcs -m
+ $ docker run -it shm ipcs -m
 
  ------ Shared Memory Segments --------	
  key        shmid      owner      perms      bytes      nattch     status      
@@ -368,7 +473,7 @@ Now run a regular container, and it correctly does NOT see the shared memory seg
 Run a container with the new `--ipc=host` option, and it now sees the shared memory segment from the host httpd:
 
  ```
- $ sudo docker run -it --ipc=host shm ipcs -m
+ $ docker run -it --ipc=host shm ipcs -m
 
  ------ Shared Memory Segments --------
  key        shmid      owner      perms      bytes      nattch     status      
@@ -378,7 +483,7 @@ Testing `--ipc=container:CONTAINERID` mode:
 
 Start a container with a program to create a shared memory segment:
 ```
- sudo docker run -it shm bash
+ $ docker run -it shm bash
  $ sudo shm/shm_server &
  $ sudo ipcs -m
 
@@ -388,7 +493,7 @@ Start a container with a program to create a shared memory segment:
 ```
 Create a 2nd container correctly shows no shared memory segment from 1st container:
 ```
- $ sudo docker run shm ipcs -m
+ $ docker run shm ipcs -m
 
  ------ Shared Memory Segments --------
  key        shmid      owner      perms      bytes      nattch     status      
@@ -397,7 +502,7 @@ Create a 2nd container correctly shows no shared memory segment from 1st contain
 Create a 3rd container using the new --ipc=container:CONTAINERID option, now it shows the shared memory segment from the first:
 
 ```
- $ sudo docker run -it --ipc=container:ed735b2264ac shm ipcs -m
+ $ docker run -it --ipc=container:ed735b2264ac shm ipcs -m
  $ sudo ipcs -m
 
  ------ Shared Memory Segments --------

@@ -12,10 +12,11 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/nat"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/runconfig"
@@ -38,14 +39,37 @@ func nullDispatch(b *Builder, args []string, attributes map[string]bool, origina
 // in the dockerfile available from the next statement on via ${foo}.
 //
 func env(b *Builder, args []string, attributes map[string]bool, original string) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("ENV is not supported on Windows.")
+	}
 	if len(args) == 0 {
-		return fmt.Errorf("ENV is missing arguments")
+		return fmt.Errorf("ENV requires at least one argument")
 	}
 
 	if len(args)%2 != 0 {
 		// should never get here, but just in case
 		return fmt.Errorf("Bad input to ENV, too many args")
 	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
+	// TODO/FIXME/NOT USED
+	// Just here to show how to use the builder flags stuff within the
+	// context of a builder command. Will remove once we actually add
+	// a builder command to something!
+	/*
+		flBool1 := b.BuilderFlags.AddBool("bool1", false)
+		flStr1 := b.BuilderFlags.AddString("str1", "HI")
+
+		if err := b.BuilderFlags.Parse(); err != nil {
+			return err
+		}
+
+		fmt.Printf("Bool1:%v\n", flBool1)
+		fmt.Printf("Str1:%v\n", flStr1)
+	*/
 
 	commitStr := "ENV"
 
@@ -78,11 +102,50 @@ func env(b *Builder, args []string, attributes map[string]bool, original string)
 // Sets the maintainer metadata.
 func maintainer(b *Builder, args []string, attributes map[string]bool, original string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("MAINTAINER requires only one argument")
+		return fmt.Errorf("MAINTAINER requires exactly one argument")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
 	}
 
 	b.maintainer = args[0]
 	return b.commit("", b.Config.Cmd, fmt.Sprintf("MAINTAINER %s", b.maintainer))
+}
+
+// LABEL some json data describing the image
+//
+// Sets the Label variable foo to bar,
+//
+func label(b *Builder, args []string, attributes map[string]bool, original string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("LABEL requires at least one argument")
+	}
+	if len(args)%2 != 0 {
+		// should never get here, but just in case
+		return fmt.Errorf("Bad input to LABEL, too many args")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
+	commitStr := "LABEL"
+
+	if b.Config.Labels == nil {
+		b.Config.Labels = map[string]string{}
+	}
+
+	for j := 0; j < len(args); j++ {
+		// name  ==> args[j]
+		// value ==> args[j+1]
+		newVar := args[j] + "=" + args[j+1] + ""
+		commitStr += " " + newVar
+
+		b.Config.Labels[args[j]] = args[j+1]
+		j++
+	}
+	return b.commit("", b.Config.Cmd, commitStr)
 }
 
 // ADD foo /path
@@ -93,6 +156,10 @@ func maintainer(b *Builder, args []string, attributes map[string]bool, original 
 func add(b *Builder, args []string, attributes map[string]bool, original string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("ADD requires at least two arguments")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
 	}
 
 	return b.runContextCommand(args, true, true, "ADD")
@@ -107,6 +174,10 @@ func dispatchCopy(b *Builder, args []string, attributes map[string]bool, origina
 		return fmt.Errorf("COPY requires at least two arguments")
 	}
 
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
 	return b.runContextCommand(args, false, false, "COPY")
 }
 
@@ -117,6 +188,10 @@ func dispatchCopy(b *Builder, args []string, attributes map[string]bool, origina
 func from(b *Builder, args []string, attributes map[string]bool, original string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("FROM requires one argument")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
 	}
 
 	name := args[0]
@@ -135,12 +210,12 @@ func from(b *Builder, args []string, attributes map[string]bool, original string
 		}
 	}
 	if err != nil {
-		if b.Daemon.Graph().IsNotExist(err) {
+		if b.Daemon.Graph().IsNotExist(err, name) {
 			image, err = b.pullImage(name)
 		}
 
 		// note that the top level err will still be !nil here if IsNotExist is
-		// not the error. This approach just simplifies hte logic a bit.
+		// not the error. This approach just simplifies the logic a bit.
 		if err != nil {
 			return err
 		}
@@ -159,6 +234,14 @@ func from(b *Builder, args []string, attributes map[string]bool, original string
 // cases.
 //
 func onbuild(b *Builder, args []string, attributes map[string]bool, original string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("ONBUILD requires at least one argument")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
 	triggerInstruction := strings.ToUpper(strings.TrimSpace(args[0]))
 	switch triggerInstruction {
 	case "ONBUILD":
@@ -182,6 +265,10 @@ func workdir(b *Builder, args []string, attributes map[string]bool, original str
 		return fmt.Errorf("WORKDIR requires exactly one argument")
 	}
 
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
 	workdir := args[0]
 
 	if !filepath.IsAbs(workdir) {
@@ -196,10 +283,11 @@ func workdir(b *Builder, args []string, attributes map[string]bool, original str
 // RUN some command yo
 //
 // run a command and commit the image. Args are automatically prepended with
-// 'sh -c' in the event there is only one argument. The difference in
-// processing:
+// 'sh -c' under linux or 'cmd /S /C' under Windows, in the event there is
+// only one argument. The difference in processing:
 //
-// RUN echo hi          # sh -c echo hi
+// RUN echo hi          # sh -c echo hi       (Linux)
+// RUN echo hi          # cmd /S /C echo hi   (Windows)
 // RUN [ "echo", "hi" ] # echo hi
 //
 func run(b *Builder, args []string, attributes map[string]bool, original string) error {
@@ -207,10 +295,18 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 		return fmt.Errorf("Please provide a source image with `from` prior to run")
 	}
 
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
 	args = handleJsonArgs(args, attributes)
 
-	if len(args) == 1 {
-		args = append([]string{"/bin/sh", "-c"}, args[0])
+	if !attributes["json"] {
+		if runtime.GOOS != "windows" {
+			args = append([]string{"/bin/sh", "-c"}, args...)
+		} else {
+			args = append([]string{"cmd", "/S /C"}, args...)
+		}
 	}
 
 	runCmd := flag.NewFlagSet("run", flag.ContinueOnError)
@@ -227,9 +323,9 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 	b.Config.Cmd = config.Cmd
 	runconfig.Merge(b.Config, config)
 
-	defer func(cmd []string) { b.Config.Cmd = cmd }(cmd)
+	defer func(cmd *runconfig.Command) { b.Config.Cmd = cmd }(cmd)
 
-	log.Debugf("[BUILDER] Command to be executed: %v", b.Config.Cmd)
+	logrus.Debugf("[BUILDER] Command to be executed: %v", b.Config.Cmd)
 
 	hit, err := b.probeCache()
 	if err != nil {
@@ -266,13 +362,23 @@ func run(b *Builder, args []string, attributes map[string]bool, original string)
 // Argument handling is the same as RUN.
 //
 func cmd(b *Builder, args []string, attributes map[string]bool, original string) error {
-	b.Config.Cmd = handleJsonArgs(args, attributes)
-
-	if !attributes["json"] {
-		b.Config.Cmd = append([]string{"/bin/sh", "-c"}, b.Config.Cmd...)
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
 	}
 
-	if err := b.commit("", b.Config.Cmd, fmt.Sprintf("CMD %v", b.Config.Cmd)); err != nil {
+	cmdSlice := handleJsonArgs(args, attributes)
+
+	if !attributes["json"] {
+		if runtime.GOOS != "windows" {
+			cmdSlice = append([]string{"/bin/sh", "-c"}, cmdSlice...)
+		} else {
+			cmdSlice = append([]string{"cmd", "/S /C"}, cmdSlice...)
+		}
+	}
+
+	b.Config.Cmd = runconfig.NewCommand(cmdSlice...)
+
+	if err := b.commit("", b.Config.Cmd, fmt.Sprintf("CMD %q", cmdSlice)); err != nil {
 		return err
 	}
 
@@ -285,25 +391,33 @@ func cmd(b *Builder, args []string, attributes map[string]bool, original string)
 
 // ENTRYPOINT /usr/sbin/nginx
 //
-// Set the entrypoint (which defaults to sh -c) to /usr/sbin/nginx. Will
-// accept the CMD as the arguments to /usr/sbin/nginx.
+// Set the entrypoint (which defaults to sh -c on linux, or cmd /S /C on Windows) to
+// /usr/sbin/nginx. Will accept the CMD as the arguments to /usr/sbin/nginx.
 //
 // Handles command processing similar to CMD and RUN, only b.Config.Entrypoint
 // is initialized at NewBuilder time instead of through argument parsing.
 //
 func entrypoint(b *Builder, args []string, attributes map[string]bool, original string) error {
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
 	parsed := handleJsonArgs(args, attributes)
 
 	switch {
 	case attributes["json"]:
 		// ENTRYPOINT ["echo", "hi"]
-		b.Config.Entrypoint = parsed
+		b.Config.Entrypoint = runconfig.NewEntrypoint(parsed...)
 	case len(parsed) == 0:
 		// ENTRYPOINT []
 		b.Config.Entrypoint = nil
 	default:
 		// ENTRYPOINT echo hi
-		b.Config.Entrypoint = []string{"/bin/sh", "-c", parsed[0]}
+		if runtime.GOOS != "windows" {
+			b.Config.Entrypoint = runconfig.NewEntrypoint("/bin/sh", "-c", parsed[0])
+		} else {
+			b.Config.Entrypoint = runconfig.NewEntrypoint("cmd", "/S /C", parsed[0])
+		}
 	}
 
 	// when setting the entrypoint if a CMD was not explicitly set then
@@ -312,7 +426,7 @@ func entrypoint(b *Builder, args []string, attributes map[string]bool, original 
 		b.Config.Cmd = nil
 	}
 
-	if err := b.commit("", b.Config.Cmd, fmt.Sprintf("ENTRYPOINT %v", b.Config.Entrypoint)); err != nil {
+	if err := b.commit("", b.Config.Cmd, fmt.Sprintf("ENTRYPOINT %q", b.Config.Entrypoint)); err != nil {
 		return err
 	}
 
@@ -327,13 +441,29 @@ func entrypoint(b *Builder, args []string, attributes map[string]bool, original 
 func expose(b *Builder, args []string, attributes map[string]bool, original string) error {
 	portsTab := args
 
+	if len(args) == 0 {
+		return fmt.Errorf("EXPOSE requires at least one argument")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
+	}
+
 	if b.Config.ExposedPorts == nil {
 		b.Config.ExposedPorts = make(nat.PortSet)
 	}
 
-	ports, _, err := nat.ParsePortSpecs(append(portsTab, b.Config.PortSpecs...))
+	ports, bindingMap, err := nat.ParsePortSpecs(append(portsTab, b.Config.PortSpecs...))
 	if err != nil {
 		return err
+	}
+
+	for _, bindings := range bindingMap {
+		if bindings[0].HostIp != "" || bindings[0].HostPort != "" {
+			fmt.Fprintf(b.ErrStream, " ---> Using Dockerfile's EXPOSE instruction"+
+				"      to map host ports to container ports (ip:hostPort:containerPort) is deprecated.\n"+
+				"      Please use -p to publish the ports.\n")
+		}
 	}
 
 	// instead of using ports directly, we build a list of ports and sort it so
@@ -359,8 +489,16 @@ func expose(b *Builder, args []string, attributes map[string]bool, original stri
 // ENTRYPOINT/CMD at container run time.
 //
 func user(b *Builder, args []string, attributes map[string]bool, original string) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("USER is not supported on Windows.")
+	}
+
 	if len(args) != 1 {
 		return fmt.Errorf("USER requires exactly one argument")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
 	}
 
 	b.Config.User = args[0]
@@ -372,23 +510,29 @@ func user(b *Builder, args []string, attributes map[string]bool, original string
 // Expose the volume /foo for use. Will also accept the JSON array form.
 //
 func volume(b *Builder, args []string, attributes map[string]bool, original string) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("VOLUME is not supported on Windows.")
+	}
 	if len(args) == 0 {
-		return fmt.Errorf("Volume cannot be empty")
+		return fmt.Errorf("VOLUME requires at least one argument")
+	}
+
+	if err := b.BuilderFlags.Parse(); err != nil {
+		return err
 	}
 
 	if b.Config.Volumes == nil {
 		b.Config.Volumes = map[string]struct{}{}
 	}
 	for _, v := range args {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return fmt.Errorf("Volume specified can not be an empty string")
+		}
 		b.Config.Volumes[v] = struct{}{}
 	}
 	if err := b.commit("", b.Config.Cmd, fmt.Sprintf("VOLUME %v", args)); err != nil {
 		return err
 	}
 	return nil
-}
-
-// INSERT is no longer accepted, but we still parse it.
-func insert(b *Builder, args []string, attributes map[string]bool, original string) error {
-	return fmt.Errorf("INSERT has been deprecated. Please use ADD instead")
 }

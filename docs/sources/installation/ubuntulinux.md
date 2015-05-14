@@ -1,383 +1,329 @@
-page_title: Installation on Ubuntu
-page_description: Instructions for installing Docker on Ubuntu.
+page_title: Installation on Ubuntu 
+page_description: Instructions for installing Docker on Ubuntu. 
 page_keywords: Docker, Docker documentation, requirements, virtualbox, installation, ubuntu
 
-# Ubuntu
+#Ubuntu
 
-Docker is supported on the following versions of Ubuntu:
+Docker is supported on these Ubuntu operating systems:
 
- - [*Ubuntu Trusty 14.04 (LTS) (64-bit)*](#ubuntu-trusty-1404-lts-64-bit)
- - [*Ubuntu Precise 12.04 (LTS) (64-bit)*](#ubuntu-precise-1204-lts-64-bit)
- - [*Ubuntu Raring 13.04 and Saucy 13.10 (64
-   bit)*](#ubuntu-raring-1304-and-saucy-1310-64-bit)
+- Ubuntu Trusty 14.04 (LTS) 
+- Ubuntu Precise 12.04 (LTS) 
+- Ubuntu Saucy 13.10
 
-Please read [*Docker and UFW*](#docker-and-ufw), if you plan to use [UFW
-(Uncomplicated Firewall)](https://help.ubuntu.com/community/UFW)
+This page instructs you to install using Docker-managed release packages and
+installation mechanisms. Using these packages ensures you get the latest release
+of Docker. If you wish to install using Ubuntu-managed packages, consult your
+Ubuntu documentation.
 
-## Ubuntu Trusty 14.04 (LTS) (64-bit)
+##Prerequisites
 
-Ubuntu Trusty comes with a 3.13.0 Linux kernel, and a `docker.io` package which
-installs Docker 1.0.1 and all its prerequisites from Ubuntu's repository.
+Docker requires a 64-bit installation regardless of your Ubuntu version.
+Additionally, your kernel must be 3.10 at minimum. The latest 3.10 minor version
+or a newer maintained version are also acceptable.
 
-> **Note**:
-> Ubuntu (and Debian) contain a much older KDE3/GNOME2 package called ``docker``, so the
-> Ubuntu-maintained package and executable are named ``docker.io``.
+Kernels older than 3.10 lack some of the features required to run Docker
+containers. These older versions are known to have bugs which cause data loss
+and frequently panic under certain conditions.
 
-### Ubuntu-maintained Package Installation
+To check your current kernel version, open a terminal and use `uname -r` to display
+your kernel version:
 
-To install the latest Ubuntu package (this is **not** the most recent Docker release):
+    $ uname -r 
+    3.11.0-15-generic
 
-    $ sudo apt-get update
-    $ sudo apt-get install docker.io
+>**Caution** Some Ubuntu OS versions **require a version higher than 3.10** to
+>run Docker, see the prerequisites on this page that apply to your Ubuntu
+>version.
 
-Then, to enable tab-completion of Docker commands in BASH, either restart BASH or:
+###For Trusty 14.04
 
-    $ source /etc/bash_completion.d/docker.io
+There are no prerequisites for this version.
 
-> **Note**:
-> Since the Ubuntu package is quite dated at this point, you may want to use
-> the following section to install the most recent release of Docker.
-> If you install the Docker version, you do not need to install ``docker.io`` from Ubuntu.
+###For Precise 12.04 (LTS)
 
-### Docker-maintained Package Installation
+For Ubuntu Precise, Docker requires the 3.13 kernel version. If your kernel
+version is older than 3.13, you must upgrade it. Refer to this table to see
+which packages are required for your environment:
 
-If you'd like to try the latest version of Docker:
+<style type="text/css"> .tg  {border-collapse:collapse;border-spacing:0;} .tg
+td{font-size:14px;padding:10px
+5px;border-style:solid;border-width:1px;overflow:hidden;word-break:normal;}
+.tg-031{width:275px;font-family:monospace} </style> <table class="tg"> <tr> <td
+class="tg-031">linux-image-generic-lts-trusty</td> <td class="tg-031e">Generic
+Linux kernel image. This kernel has AUFS built in. This is required to run
+Docker.</td> </tr> <tr> <td class="tg-031">linux-headers-generic-lts-trusty</td>
+<td class="tg-031e">Allows packages such as ZFS and VirtualBox guest additions
+which depend on them. If you didn't install the headers for your existing
+kernel, then you can skip these headers for the"trusty" kernel. If you're
+unsure, you should include this package for safety.</td> </tr> <tr> <td
+class="tg-031">xserver-xorg-lts-trusty</td> <td class="tg-031e"
+rowspan="2">Optional in non-graphical environments without Unity/Xorg.
+<i>Required</i> when running Docker on machine with a graphical environment.
 
-First, check that your APT system can deal with `https`
-URLs: the file `/usr/lib/apt/methods/https`
-should exist. If it doesn't, you need to install the package
-`apt-transport-https`.
+<p>To learn more about the reasons for these packages, read the installation
+instructions for backported kernels, specifically the <a
+href="https://wiki.ubuntu.com/Kernel/LTSEnablementStack" target="_blank">LTS
+Enablement Stack</a> &mdash; refer to note 5 under each version.</p></td> </tr>
+<tr> <td class="tg-031">libgl1-mesa-glx-lts-trusty</td> </tr> </table> &nbsp;
 
-    [ -e /usr/lib/apt/methods/https ] || {
-      apt-get update
-      apt-get install apt-transport-https
-    }
+To upgrade your kernel and install the additional packages, do the following:
 
-Then, add the Docker repository key to your local keychain.
+1. Open a terminal on your Ubuntu host.
 
-    $ sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 36A1D7869245C8950F966E92D8576A8BA88D21E9
+2. Update your package manager.
 
-Add the Docker repository to your apt sources list, update and install
-the `lxc-docker` package.
+        $ sudo apt-get update
 
-*You may receive a warning that the package isn't trusted. Answer yes to
-continue installation.*
+3. Install both the required and optional packages.
 
-    $ sudo sh -c "echo deb https://get.docker.com/ubuntu docker main\
-    > /etc/apt/sources.list.d/docker.list"
-    $ sudo apt-get update
-    $ sudo apt-get install lxc-docker
+        $ sudo apt-get install linux-image-generic-lts-trusty
 
-> **Note**:
+    Depending on your environment, you may install more as described in the preceding table.
+
+4. Reboot your host.
+
+        $ sudo reboot
+
+5. After your system reboots, go ahead and [install Docker](#installing-docker-on-ubuntu).
+
+
+###For Saucy 13.10 (64 bit)
+
+Docker uses AUFS as the default storage backend. If you don't have this
+prerequisite installed, Docker's installation process adds it.
+
+##Installation
+
+Make sure you have installed the prerequisites for your Ubuntu version. Then,
+install Docker using the following:
+
+1. Log into your Ubuntu installation as a user with `sudo` privileges.
+
+2. Verify that you have `wget` installed.
+
+        $ which wget
+
+    If `wget` isn't installed, install it after updating your manager:
+
+        $ sudo apt-get update
+        $ sudo apt-get install wget
+
+3. Get the latest Docker package.
+
+        $ wget -qO- https://get.docker.com/ | sh
+
+    The system prompts you for your `sudo` password. Then, it downloads and
+    installs Docker and its dependencies.
+>**Note**: If your company is behind a filtering proxy, you may find that the
+>`apt-key`
+>command fails for the Docker repo during installation. To work around this,
+>add the key directly using the following:
 >
-> There is also a simple `curl` script available to help with this process.
->
->     $ curl -sSL https://get.docker.com/ubuntu/ | sudo sh
+>       $ wget -qO- https://get.docker.com/gpg | sudo apt-key add -
 
-To verify that everything has worked as expected:
+4. Verify `docker` is installed correctly.
 
-    $ sudo docker run -i -t ubuntu /bin/bash
+        $ sudo docker run hello-world
 
-Which should download the `ubuntu` image, and then start `bash` in a container.
+    This command downloads a test image and runs it in a container.
 
-## Ubuntu Precise 12.04 (LTS) (64-bit)
+## Optional configurations for Docker on Ubuntu 
 
-This installation path should work at all times.
+This section contains optional procedures for configuring your Ubuntu to work
+better with Docker.
 
-### Dependencies
+* [Create a docker group](#create-a-docker-group) 
+* [Adjust memory and swap accounting](#adjust-memory-and-swap-accounting) 
+* [Enable UFW forwarding](#enable-ufw-forwarding) 
+* [Configure a DNS server for use by Docker](#configure-a-dns-server-for-docker)
 
-**Linux kernel 3.8**
+### Create a Docker group		
 
-Due to a bug in LXC, Docker works best on the 3.8 kernel. Precise comes
-with a 3.2 kernel, so we need to upgrade it. The kernel you'll install
-when following these steps comes with AUFS built in. We also include the
-generic headers to enable packages that depend on them, like ZFS and the
-VirtualBox guest additions. If you didn't install the headers for your
-"precise" kernel, then you can skip these headers for the "raring"
-kernel. But it is safer to include them if you're not sure.
+The `docker` daemon binds to a Unix socket instead of a TCP port. By default
+that Unix socket is owned by the user `root` and other users can access it with
+`sudo`. For this reason, `docker` daemon always runs as the `root` user.
 
-Please read the installation instructions for backported kernels at
-Ubuntu.org to understand why you also need to install the Xorg packages
-when running Docker on a machine with a graphical environment like Unity.
-[LTS Enablement Stack](https://wiki.ubuntu.com/Kernel/LTSEnablementStack) refer to note 5 under
-each version.
+To avoid having to use `sudo` when you use the `docker` command, create a Unix
+group called `docker` and add users to it. When the `docker` daemon starts, it
+makes the ownership of the Unix socket read/writable by the `docker` group.
 
-    # install the backported kernel
-    $ sudo apt-get update
-    $ sudo apt-get install linux-image-generic-lts-raring linux-headers-generic-lts-raring
-    
-    # install the backported kernel and xorg if using Unity/Xorg
-    $ sudo apt-get install --install-recommends linux-generic-lts-raring xserver-xorg-lts-raring libgl1-mesa-glx-lts-raring
+>**Warning**: The `docker` group is equivalent to the `root` user; For details
+>on how this impacts security in your system, see [*Docker Daemon Attack
+>Surface*](/articles/security/#docker-daemon-attack-surface) for details.
 
-    # reboot
-    $ sudo reboot
+To create the `docker` group and add your user:
 
-### Installation
+1. Log into Ubuntu as a user with `sudo` privileges.
 
-> **Warning**: 
-> These instructions have changed for 0.6. If you are upgrading from an
-> earlier version, you will need to follow them again.
+    This procedure assumes you log in as the `ubuntu` user.
 
-Docker is available as a Debian package, which makes installation easy.
-**See the** [*Mirrors*](#mirrors) **section below if you are not
-in the United States.** Other sources of the Debian packages may be
-faster for you to install.
+3. Create the `docker` group and add your user.
 
-First, check that your APT system can deal with `https`
-URLs: the file `/usr/lib/apt/methods/https`
-should exist. If it doesn't, you need to install the package
-`apt-transport-https`.
+        $ sudo usermod -aG docker ubuntu
 
-    [ -e /usr/lib/apt/methods/https ] || {
-      apt-get update
-      apt-get install apt-transport-https
-    }
+3. Log out and log back in.
 
-Then, add the Docker repository key to your local keychain.
+    This ensures your user is running with the correct permissions.
 
-    $ sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 36A1D7869245C8950F966E92D8576A8BA88D21E9
+4. Verify your work by running `docker` without `sudo`.
 
-Add the Docker repository to your apt sources list, update and install
-the `lxc-docker` package.
+        $ docker run hello-world
 
-*You may receive a warning that the package isn't trusted. Answer yes to
-continue installation.*
 
-    $ sudo sh -c "echo deb https://get.docker.com/ubuntu docker main\
-    > /etc/apt/sources.list.d/docker.list"
-    $ sudo apt-get update
-    $ sudo apt-get install lxc-docker
+### Adjust memory and swap accounting
 
-> **Note**:
-> 
-> There is also a simple `curl` script available to help with this process.
-> 
->     $ curl -sSL https://get.docker.com/ubuntu/ | sudo sh
+When users run Docker, they may see these messages when working with an image:
 
-Now verify that the installation has worked by downloading the
-`ubuntu` image and launching a container.
+    WARNING: Your kernel does not support cgroup swap limit. WARNING: Your
+    kernel does not support swap limit capabilities. Limitation discarded.
 
-    $ sudo docker run -i -t ubuntu /bin/bash
+To prevent these messages, enable memory and swap accounting on your system. To
+enable these on system using GNU GRUB (GNU GRand Unified Bootloader), do the
+following.
 
-Type `exit` to exit
+1. Log into Ubuntu as a user with `sudo` privileges.
 
-**Done!**, continue with the [User Guide](/userguide/).
+2. Edit the `/etc/default/grub` file.
 
-## Ubuntu Raring 13.04 and Saucy 13.10 (64 bit)
+3. Set the `GRUB_CMDLINE_LINUX` value as follows:
 
-These instructions cover both Ubuntu Raring 13.04 and Saucy 13.10.
+        GRUB_CMDLINE_LINUX="cgroup_enable=memory swapaccount=1"
 
-### Dependencies
+4. Save and close the file.
 
-**Optional AUFS filesystem support**
+5. Update GRUB.
 
-Ubuntu Raring already comes with the 3.8 kernel, so we don't need to
-install it. However, not all systems have AUFS filesystem support
-enabled. AUFS support is optional as of version 0.7, but it's still
-available as a driver and we recommend using it if you can.
+        $ sudo update-grub
 
-To make sure AUFS is installed, run the following commands:
+6. Reboot your system.
 
-    $ sudo apt-get update
-    $ sudo apt-get install linux-image-extra-`uname -r`
 
-### Installation
+### Enable UFW forwarding
 
-Docker is available as a Debian package, which makes installation easy.
+If you use [UFW (Uncomplicated Firewall)](https://help.ubuntu.com/community/UFW)
+on the same host as you run Docker, you'll need to do additional configuration.
+Docker uses a bridge to manage container networking. By default, UFW drops all
+forwarding traffic. As a result, for Docker to run when UFW is
+enabled, you must set UFW's forwarding policy appropriately.
 
-> **Warning**: 
-> Please note that these instructions have changed for 0.6. If you are
-> upgrading from an earlier version, you will need to follow them again.
+Also, UFW's default set of rules denies all incoming traffic. If you want to be able
+to reach your containers from another host then you should also allow incoming
+connections on the Docker port (default `2375`).
 
-First add the Docker repository key to your local keychain.
+To configure UFW and allow incoming connections on the Docker port:
 
-    $ sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 36A1D7869245C8950F966E92D8576A8BA88D21E9
+1. Log into Ubuntu as a user with `sudo` privileges.
 
-Add the Docker repository to your apt sources list, update and install
-the `lxc-docker` package.
+2. Verify that UFW is installed and enabled.
 
-    $ sudo sh -c "echo deb http://get.docker.com/ubuntu docker main\
-    > /etc/apt/sources.list.d/docker.list"
-    $ sudo apt-get update
-    $ sudo apt-get install lxc-docker
+        $ sudo ufw status
 
-Now verify that the installation has worked by downloading the
-`ubuntu` image and launching a container.
+3. Open the `/etc/default/ufw` file for editing.
 
-    $ sudo docker run -i -t ubuntu /bin/bash
+        $ sudo nano /etc/default/ufw
 
-Type `exit` to exit
+4. Set the `DEFAULT_FORWARD_POLICY` policy to:
 
-**Done!**, now continue with the [User Guide](/userguide/).
+        DEFAULT_FORWARD_POLICY="ACCEPT"
 
-### Upgrade
+5. Save and close the file.
 
-To install the latest version of Docker, use the standard
-`apt-get` method:
+6. Reload UFW to use the new setting.
 
-    # update your sources list
-    $ sudo apt-get update
+        $ sudo ufw reload
 
-    # install the latest
-    $ sudo apt-get install lxc-docker
+7. Allow incoming connections on the Docker port.
 
-## Giving non-root access
+        $ sudo ufw allow 2375/tcp
 
-The `docker` daemon always runs as the `root` user, and since Docker
-version 0.5.2, the `docker` daemon binds to a Unix socket instead of a
-TCP port. By default that Unix socket is owned by the user `root`, and
-so, by default, you can access it with `sudo`.
+### Configure a DNS server for use by Docker
 
-Starting in version 0.5.3, if you (or your Docker installer) create a
-Unix group called `docker` and add users to it, then the `docker` daemon
-will make the ownership of the Unix socket read/writable by the `docker`
-group when the daemon starts. The `docker` daemon must always run as the
-`root` user, but if you run the `docker` client as a user in the
-`docker` group then you don't need to add `sudo` to all the client
-commands.  From Docker 0.9.0 you can use the `-G` flag to specify an
-alternative group.
+Systems that run Ubuntu or an Ubuntu derivative on the desktop typically use
+`127.0.0.1` as the default `nameserver` in `/etc/resolv.conf` file. The
+NetworkManager also sets up `dnsmasq` to use the real DNS servers of the
+connection and sets up `nameserver 127.0.0.1` in /`etc/resolv.conf`.
 
-> **Warning**: 
-> The `docker` group (or the group specified with the `-G` flag) is
-> `root`-equivalent; see [*Docker Daemon Attack Surface*](
-> /articles/security/#docker-daemon-attack-surface) for details.
+When starting containers on desktop machines with these configurations, Docker
+users see this warning:
 
-**Example:**
+    WARNING: Local (127.0.0.1) DNS resolver found in resolv.conf and containers
+    can't use it. Using default external servers : [8.8.8.8 8.8.4.4]
 
-    # Add the docker group if it doesn't already exist.
-    $ sudo groupadd docker
+The warning occurs because Docker containers can't use the local DNS nameserver.
+Instead, Docker defaults to using an external nameserver.
 
-    # Add the connected user "${USER}" to the docker group.
-    # Change the user name to match your preferred user.
-    # You may have to logout and log back in again for
-    # this to take effect.
-    $ sudo gpasswd -a ${USER} docker
+To avoid this warning, you can specify a DNS server for use by Docker
+containers. Or, you can disable `dnsmasq` in NetworkManager. Though, disabling
+`dnsmasq` might make DNS resolution slower on some networks.
 
-    # Restart the Docker daemon.
-    # If you are in Ubuntu 14.04, use docker.io instead of docker
-    $ sudo service docker restart
+To specify a DNS server for use by Docker:
 
-## Memory and Swap Accounting
+1. Log into Ubuntu as a user with `sudo` privileges.
 
-If you want to enable memory and swap accounting, you must add the
-following command-line parameters to your kernel:
+2. Open the `/etc/default/docker` file for editing.
 
-    cgroup_enable=memory swapaccount=1
+        $ sudo nano /etc/default/docker
 
-On systems using GRUB (which is the default for Ubuntu), you can add
-those parameters by editing `/etc/default/grub` and
-extending `GRUB_CMDLINE_LINUX`. Look for the
-following line:
+3. Add a setting for Docker.
 
-    GRUB_CMDLINE_LINUX=""
+        DOCKER_OPTS="--dns 8.8.8.8"
 
-And replace it by the following one:
+    Replace `8.8.8.8` with a local DNS server such as `192.168.1.1`. You can also
+    specify multiple DNS servers. Separated them with spaces, for example:
 
-    GRUB_CMDLINE_LINUX="cgroup_enable=memory swapaccount=1"
+        --dns 8.8.8.8 --dns 192.168.1.1
 
-Then run `sudo update-grub`, and reboot.
+    >**Warning**: If you're doing this on a laptop which connects to various
+    >networks, make sure to choose a public DNS server.
 
-These parameters will help you get rid of the following warnings:
+4. Save and close the file.
 
-    WARNING: Your kernel does not support cgroup swap limit.
-    WARNING: Your kernel does not support swap limit capabilities. Limitation discarded.
+5. Restart the Docker daemon.
 
-## Troubleshooting
+        $ sudo restart docker
 
-On Linux Mint, the `cgroup-lite` and `apparmor` packages are not
-installed by default. Before Docker will work correctly, you will need
-to install this via:
 
-    $ sudo apt-get update && sudo apt-get install cgroup-lite apparmor
+&nbsp;
+&nbsp;
 
-## Docker and UFW
+**Or, as an alternative to the previous procedure,** disable `dnsmasq` in
+NetworkManager (this might slow your network).
 
-Docker uses a bridge to manage container networking. By default, UFW
-drops all forwarding traffic. As a result you will need to enable UFW
-forwarding:
+1. Open the `/etc/NetworkManager/NetworkManager.conf` file for editing.
 
-    $ sudo nano /etc/default/ufw
+        $ sudo nano /etc/NetworkManager/NetworkManager.conf
 
-    # Change:
-    # DEFAULT_FORWARD_POLICY="DROP"
-    # to
-    DEFAULT_FORWARD_POLICY="ACCEPT"
+2. Comment out the `dns=dsnmasq` line:
 
-Then reload UFW:
+        dns=dnsmasq
 
-    $ sudo ufw reload
+3. Save and close the file.
 
-UFW's default set of rules denies all incoming traffic. If you want to
-be able to reach your containers from another host then you should allow
-incoming connections on the Docker port (default 2375):
+4. Restart both the NetworkManager and Docker.
 
-    $ sudo ufw allow 2375/tcp
+        $ sudo restart network-manager $ sudo restart docker
 
-## Docker and local DNS server warnings
 
-Systems which are running Ubuntu or an Ubuntu derivative on the desktop
-will use 127.0.0.1 as the default nameserver in /etc/resolv.conf.
-NetworkManager sets up dnsmasq to use the real DNS servers of the
-connection and sets up nameserver 127.0.0.1 in /etc/resolv.conf.
+## Upgrade Docker
 
-When starting containers on these desktop machines, users will see a
-warning:
+To install the latest version of Docker with `wget`:
 
-    WARNING: Local (127.0.0.1) DNS resolver found in resolv.conf and containers can't use it. Using default external servers : [8.8.8.8 8.8.4.4]
+    $ wget -qO- https://get.docker.com/ | sh
 
-This warning is shown because the containers can't use the local DNS
-nameserver and Docker will default to using an external nameserver.
+## Uninstallation
 
-This can be worked around by specifying a DNS server to be used by the
-Docker daemon for the containers:
+To uninstall the Docker package:
 
-    $ sudo nano /etc/default/docker
-    ---
-    # Add:
-    DOCKER_OPTS="--dns 8.8.8.8"
-    # 8.8.8.8 could be replaced with a local DNS server, such as 192.168.1.1
-    # multiple DNS servers can be specified: --dns 8.8.8.8 --dns 192.168.1.1
+    $ sudo apt-get purge lxc-docker
 
-The Docker daemon has to be restarted:
+To uninstall the Docker package and dependencies that are no longer needed:
 
-    $ sudo restart docker
+    $ sudo apt-get autoremove --purge lxc-docker
 
-> **Warning**: 
-> If you're doing this on a laptop which connects to various networks,
-> make sure to choose a public DNS server.
+The above commands will not remove images, containers, volumes, or user created
+configuration files on your host. If you wish to delete all images, containers,
+and volumes run the following command:
 
-An alternative solution involves disabling dnsmasq in NetworkManager by
-following these steps:
+    $ rm -rf /var/lib/docker
 
-    $ sudo nano /etc/NetworkManager/NetworkManager.conf
-    ----
-    # Change:
-    dns=dnsmasq
-    # to
-    #dns=dnsmasq
-
-NetworkManager and Docker need to be restarted afterwards:
-
-    $ sudo restart network-manager
-    $ sudo restart docker
-
-> **Warning**: This might make DNS resolution slower on some networks.
-
-## Mirrors
-
-You should `ping get.docker.com` and compare the
-latency to the following mirrors, and pick whichever one is best for
-you.
-
-### Yandex
-
-[Yandex](http://yandex.ru/) in Russia is mirroring the Docker Debian
-packages, updating every 6 hours.
-Substitute `http://mirror.yandex.ru/mirrors/docker/` for
-`http://get.docker.com/ubuntu` in the instructions above.
-For example:
-
-    $ sudo sh -c "echo deb http://mirror.yandex.ru/mirrors/docker/ docker main\
-    > /etc/apt/sources.list.d/docker.list"
-    $ sudo apt-get update
-    $ sudo apt-get install lxc-docker
+You must delete the user created configuration files manually.
